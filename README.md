@@ -104,3 +104,4 @@ The app expects MP3 files to contain JSON in their comment field (example):
   "Date": "2024",
   "Comment": "Additional notes"
 }
+```
