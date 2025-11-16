@@ -47,8 +47,10 @@ The app reads JSON metadata embedded in MP3 comment fields (common in fan archiv
    git clone https://github.com/GamerTuruu/DF-Metadata-Customizer.git
    cd DF-Metadata-Customizer
 2. Install dependencies:
+   ```bash
    pip install -r requirements.txt
 3. Run the application:
+   ```bash
    python DF_Metadata_Customizer.py
 
 ### Option 2: Windows EXE (No Python Required)
@@ -74,6 +76,7 @@ The app reads JSON metadata embedded in MP3 comment fields (common in fan archiv
 
 ### 🔧 JSON Metadata Format
 The app expects MP3 files to contain JSON in their comment field (example):
+```bash
 {
   "Title": "Original Song Name",
   "Artist": "Original Artist", 
