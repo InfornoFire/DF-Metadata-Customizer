@@ -81,10 +81,9 @@ Prefer to run from source? See [Installation](#installation) above.
    Typical fields:
    ```bash
    Date, Title, Artist, CoverArtist, Version, Discnumber, Track, Comment
-### !!!IMPORTANT!!!
-   ```bash
-   metadata_presets.json
-   have to be in same folder as main app
+### !!! IMPORTANT !!!
+   📁metadata_presets.json📁
+   have to be in same folder as main app (DF_Metadata_Customizer.exe or DF_Metadata_Customizer.py)
 3. Create Rules:
    Use the Title/Artist/Album tabs to create conditional rules
    Example: "IF CoverArtist is not empty THEN Title = {CoverArtist} - {Title}"
