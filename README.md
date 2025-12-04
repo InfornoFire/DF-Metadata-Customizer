@@ -4,8 +4,9 @@
 
 A powerful metadata management tool designed specifically for Neuro-sama and Evil Neuro cover song archives. This application helps standardize ID3 tags across large collections, extract embedded JSON metadata, and apply consistent formatting rules - making your cover song library organized and player-friendly.
 
-![Screenshot](assets/mainscreen_dark.png)
-![Screenshot](assets/mainscreen_light.png)
+![Screenshot](assets/mainscreen_dark3.png)
+![Screenshot](assets/mainscreen_light3.png)
+![Screenshot](assets/song_statistics2.png)
 
 ## 🎵 What This Tool Does
 - Reads existing metadata from your MP3 files
@@ -180,5 +181,6 @@ Toggle between dark and light themes using the ☀️/🌙 button in the top-rig
    - Special thanks to the [Nyss7](https://discord.com/channels/@me/1433267472496201778) and [mm2wood](https://discord.com/channels/@me/1406566620666794114)
 
 ### 🐛 Bug Reports & Feature Requests
+
 
 Please use the [GitHub Issues](https://github.com/gamerturuu/df-metadata-customizer/issues) page to report bugs or request new features.
