@@ -34,20 +34,23 @@ class SortRuleRow(ctk.CTkFrame):
         if not is_first:
             self.up_btn = ctk.CTkButton(self, text="▲", width=28, command=lambda: move_callback(self, -1))
             self.up_btn.grid(row=0, column=3, padx=2, pady=6)
-            
+
             self.down_btn = ctk.CTkButton(self, text="▼", width=28, command=lambda: move_callback(self, 1))
             self.down_btn.grid(row=0, column=4, padx=2, pady=6)
-            
-            self.del_btn = ctk.CTkButton(self, text="✖", width=28, fg_color="#b33", hover_color="#c55", 
-                                       command=lambda: delete_callback(self))
+
+            self.del_btn = ctk.CTkButton(
+                self,
+                text="✖",
+                width=28,
+                fg_color="#b33",
+                hover_color="#c55",
+                command=lambda: delete_callback(self),
+            )
             self.del_btn.grid(row=0, column=5, padx=(2, 6), pady=6)
 
     def get_sort_rule(self):
-        return {
-            "field": self.field_var.get(),
-            "order": self.order_var.get()
-        }
-    
+        return {"field": self.field_var.get(), "order": self.order_var.get()}
+
 
 class RuleRow(ctk.CTkFrame):
     def __init__(self, master, fields, operators, delete_callback, is_first=False, **kwargs):
@@ -98,8 +101,14 @@ class RuleRow(ctk.CTkFrame):
         self.template_entry.grid(row=0, column=6, padx=6, pady=3, sticky="ew")
 
         # Only delete button, no up/down buttons
-        self.del_btn = ctk.CTkButton(self, text="✖", width=28, fg_color="#b33", hover_color="#c55", 
-                                   command=lambda: delete_callback(self))
+        self.del_btn = ctk.CTkButton(
+            self,
+            text="✖",
+            width=28,
+            fg_color="#b33",
+            hover_color="#c55",
+            command=lambda: delete_callback(self),
+        )
         self.del_btn.grid(row=0, column=7, padx=(6, 8), pady=3)
 
     def get_rule(self):

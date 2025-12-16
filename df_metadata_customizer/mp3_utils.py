@@ -1,4 +1,4 @@
-
+"""Utilities for reading/writing MP3 ID3 tags and embedded JSON metadata."""
 import json
 import re
 from functools import lru_cache
@@ -10,10 +10,12 @@ from PIL import Image
 
 JSON_FIND_RE = re.compile(r"\{.*\}", re.DOTALL)
 
-@lru_cache(maxsize=1000)  # Increased cache size
+
+@lru_cache(maxsize=1000)
 def extract_json_from_mp3_cached(path):
     """Cached version of extract_json_from_mp3"""
     return extract_json_from_mp3(path)
+
 
 def extract_json_from_mp3(path):
     """Return (parsed JSON dict, prefix_text) or (None, None)."""
@@ -34,8 +36,8 @@ def extract_json_from_mp3(path):
             if m:
                 raw_json = m.group(0)
                 # FIXED: Get the exact prefix without adding extra space
-                prefix_text = text[:m.start()].strip()
-                
+                prefix_text = text[: m.start()].strip()
+
                 try:
                     json_data = json.loads(raw_json)
                     return json_data, prefix_text
@@ -59,10 +61,10 @@ def write_json_to_mp3(path, json_data):
             tags = ID3(path)
         except ID3NoHeaderError:
             tags = ID3()
-        
+
         # Remove existing COMM frames
         tags.delall("COMM::ved")
-        
+
         # Convert JSON to string and create new COMM frame
         # FIXED: Don't double-encode the JSON, just use the string directly
         if isinstance(json_data, str):
@@ -71,15 +73,17 @@ def write_json_to_mp3(path, json_data):
         else:
             # If it's a dict, convert to JSON string
             json_str = json.dumps(json_data, ensure_ascii=False)
-        
+
         # FIXED: Create COMM frame with proper encoding and description
-        tags.add(COMM(
-            encoding=3,  # UTF-8
-            lang='ved',  # Use 'ved' for custom archive
-            desc='',     # Empty description
-            text=json_str
-        ))
-        
+        tags.add(
+            COMM(
+                encoding=3,  # UTF-8
+                lang="ved",  # Use 'ved' for custom archive
+                desc="",  # Empty description
+                text=json_str,
+            )
+        )
+
         # Save the tags
         tags.save(path)
         return True
@@ -105,7 +109,17 @@ def read_cover_from_mp3(path):
         return None, None
 
 
-def write_id3_tags(path, title=None, artist=None, album=None, track=None, disc=None, date=None, cover_bytes=None, cover_mime="image/jpeg"):
+def write_id3_tags(
+    path,
+    title=None,
+    artist=None,
+    album=None,
+    track=None,
+    disc=None,
+    date=None,
+    cover_bytes=None,
+    cover_mime="image/jpeg",
+):
     """Write provided tags to file (only provided ones). Returns True/False."""
     try:
         try:
@@ -134,7 +148,7 @@ def write_id3_tags(path, title=None, artist=None, album=None, track=None, disc=N
             tags.delall("APIC")
             tags.add(APIC(encoding=3, mime=cover_mime, type=3, desc="Cover", data=cover_bytes))
         tags.save(path)
-        return True
     except Exception as e:
         print("Error writing tags:", e)
         return False
+    return True

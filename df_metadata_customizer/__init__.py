@@ -1,4 +1,6 @@
-from .dialogs import ProgressDialog, StatusPopup
+"""Database Reformatter package."""
+
+from .dialogs import ProgressDialog, StatisticsDialog
 from .image_cache import OptimizedImageCache
 from .mp3_utils import (
     extract_json_from_mp3_cached,
@@ -13,7 +15,7 @@ __all__ = [
     "ProgressDialog",
     "RuleRow",
     "SortRuleRow",
-    "StatusPopup",
+    "StatisticsDialog",
     "extract_json_from_mp3_cached",
     "read_cover_from_mp3",
     "write_id3_tags",

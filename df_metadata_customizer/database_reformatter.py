@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 import customtkinter as ctk
 from PIL import Image
 
-from df_metadata_customizer.dialogs import ProgressDialog, StatusPopup
+from df_metadata_customizer.dialogs import ProgressDialog, StatisticsDialog
 from df_metadata_customizer.image_cache import OptimizedImageCache
 from df_metadata_customizer.mp3_utils import (
     extract_json_from_mp3_cached,
@@ -589,7 +589,7 @@ class DFApp(ctk.CTk):
             self._status_popup.focus_set()
             return
             
-        self._status_popup = StatusPopup(self, self.stats)
+        self._status_popup = StatisticsDialog(self, self.stats)
 
     # -------------------------
     # NEW: Multi-level Sorting Methods
