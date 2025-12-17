@@ -2219,7 +2219,7 @@ class DFApp(ctk.CTk):
                 try:
                     json_str = json.dumps(wrapper_json, indent=2, ensure_ascii=True)
                     self.json_text.insert("1.0", json_str)
-                except:
+                except Exception:
                     self.json_text.insert("1.0", "Error displaying JSON data")
         else:
             self.json_text.insert("1.0", "No JSON found in comments")
