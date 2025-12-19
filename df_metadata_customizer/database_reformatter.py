@@ -9,7 +9,7 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import customtkinter as ctk
 from PIL import Image
@@ -19,6 +19,7 @@ from df_metadata_customizer.dialogs import ProgressDialog, StatisticsDialog
 from df_metadata_customizer.file_manager import FileManager
 from df_metadata_customizer.image_utils import OptimizedImageCache
 from df_metadata_customizer.rule_manager import RuleManager
+from df_metadata_customizer.song_metadata import MetadataFields
 from df_metadata_customizer.widgets import RuleRow, SortRuleRow
 
 if TYPE_CHECKING:
@@ -30,6 +31,19 @@ ctk.set_default_color_theme("dark-blue")
 
 class DFApp(ctk.CTk):
     """Main application window for Database Reformatter."""
+
+    COLUMN_ORDER: Final = [
+        MetadataFields.UI_TITLE,
+        MetadataFields.UI_ARTIST,
+        MetadataFields.UI_COVER_ARTIST,
+        MetadataFields.UI_VERSION,
+        MetadataFields.UI_DISC,
+        MetadataFields.UI_TRACK,
+        MetadataFields.UI_DATE,
+        MetadataFields.UI_COMMENT,
+        MetadataFields.UI_SPECIAL,
+        MetadataFields.UI_FILE,
+    ]
 
     def __init__(self) -> None:
         """Initialize the main application window."""
@@ -45,19 +59,7 @@ class DFApp(ctk.CTk):
         self.current_index = None
         self.current_metadata: SongMetadata | None = None
         self.current_cover_bytes = None
-        # Updated column order to include 'special' and remove forward slash handling
-        self.column_order = [
-            "title",
-            "artist",
-            "coverartist",
-            "version",
-            "disc",
-            "track",
-            "date",
-            "comment",
-            "special",
-            "file",
-        ]
+
         self.visible_file_indices = []  # Track visible files for prev/next navigation
         self.progress_dialog = None  # Progress dialog reference
         self.operation_in_progress = False  # Prevent multiple operations
@@ -90,18 +92,7 @@ class DFApp(ctk.CTk):
             "other_total": 0,
         }
 
-        # Default fields/operators - UPDATED: Added Special field
-        self.rule_fields = [
-            "Title",
-            "Artist",
-            "CoverArtist",
-            "Version",
-            "Discnumber",
-            "Track",
-            "Date",
-            "Comment",
-            "Special",
-        ]
+        # Default fields/operators
         self.rule_ops = [
             "is",
             "contains",
@@ -113,19 +104,6 @@ class DFApp(ctk.CTk):
             "is not latest version",
         ]
 
-        # Sort fields - UPDATED: Added special field
-        self.sort_fields = [
-            "title",
-            "artist",
-            "coverartist",
-            "version",
-            "disc",
-            "track",
-            "date",
-            "comment",
-            "special",
-            "file",
-        ]
         # Maximum number of allowed sort rules (including the primary rule)
         self.max_sort_rules = 5
         self.max_rules_per_tab = 50
@@ -237,7 +215,7 @@ class DFApp(ctk.CTk):
         self.add_sort_rule(is_first=True)
 
         # Add sort rule button
-        self.add_sort_btn = ctk.CTkButton(sort_frame, text="+ Add Sort", width=80, command=self.add_sort_rule)
+        self.add_sort_btn = ctk.CTkButton(sort_frame, text="+ Add Sort", width=80, command=lambda: self.add_sort_rule())
         self.add_sort_btn.grid(row=1, column=0, sticky="w", pady=(2, 0))
 
         # Search info label (next to Add Sort)
@@ -250,29 +228,28 @@ class DFApp(ctk.CTk):
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
-        # Extended columns to show all JSON elements including Comment and Special
-        columns = tuple(self.column_order)
-        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="extended")
+        # Extended columns to show all JSON elements
+        self.tree = ttk.Treeview(tree_frame, columns=DFApp.COLUMN_ORDER, show="headings", selectmode="extended")
 
         # Configure treeview style - will be updated by theme
         self.style = ttk.Style()
         self._update_treeview_style()
 
-        # Configure columns - UPDATED: Added special column
+        # Configure columns
         column_configs = {
-            "title": ("Title", 280, "w"),
-            "artist": ("Artist", 275, "w"),
-            "coverartist": ("Cover Artist", 95, "w"),
-            "version": ("Version", 65, "center"),
-            "disc": ("Disc", 35, "center"),
-            "track": ("Track", 55, "center"),
-            "date": ("Date", 85, "center"),
-            "comment": ("Comment", 80, "w"),
-            "special": ("Special", 60, "center"),
-            "file": ("File", 120, "w"),
+            MetadataFields.UI_TITLE: ("Title", 280, "w"),
+            MetadataFields.UI_ARTIST: ("Artist", 275, "w"),
+            MetadataFields.UI_COVER_ARTIST: ("Cover Artist", 95, "w"),
+            MetadataFields.UI_VERSION: ("Version", 65, "center"),
+            MetadataFields.UI_DISC: ("Disc", 35, "center"),
+            MetadataFields.UI_TRACK: ("Track", 55, "center"),
+            MetadataFields.UI_DATE: ("Date", 85, "center"),
+            MetadataFields.UI_COMMENT: ("Comment", 80, "w"),
+            MetadataFields.UI_SPECIAL: ("Special", 60, "center"),
+            MetadataFields.UI_FILE: ("File", 120, "w"),
         }
 
-        for col in self.column_order:
+        for col in DFApp.COLUMN_ORDER:
             heading, width, anchor = column_configs[col]
             self.tree.heading(col, text=heading)
             # Disable automatic stretching so horizontal scrollbar appears
@@ -583,7 +560,7 @@ class DFApp(ctk.CTk):
     # -------------------------
     # NEW: Multi-level Sorting Methods
     # -------------------------
-    def add_sort_rule(self, is_first: bool = False) -> None:
+    def add_sort_rule(self, *, is_first: bool = False) -> None:
         """Add a new sort rule row."""
         # Enforce maximum number of sort rules
         if len(self.sort_rules) >= self.max_sort_rules:
@@ -593,7 +570,6 @@ class DFApp(ctk.CTk):
 
         row = SortRuleRow(
             self.sort_container,
-            self.sort_fields,
             move_callback=self.move_sort_rule,
             delete_callback=self.delete_sort_rule,
             is_first=is_first,
@@ -601,11 +577,10 @@ class DFApp(ctk.CTk):
         row.pack(fill="x", padx=0, pady=2)
         self.sort_rules.append(row)
 
-        # Set default values - TITLE BY DEFAULT instead of disc
         if is_first:
-            row.field_var.set("title")  # Changed from "disc" to "title"
+            row.field_var.set(MetadataFields.UI_TITLE)
         else:
-            row.field_var.set("artist")  # Changed from "title" to "artist"
+            row.field_var.set(MetadataFields.UI_ARTIST)
 
         # Bind change events to refresh tree
         row.field_menu.configure(command=lambda _val=None: self.refresh_tree())
@@ -719,22 +694,9 @@ class DFApp(ctk.CTk):
 
         try:
             if not mp3_utils.play_song(self.mp3_files[idx]):
-                self.show_audio_player_instructions()
+                mp3_utils.show_audio_player_instructions()
         except Exception as e:
             messagebox.showerror("Playback Error", f"Could not play file:\n{e!s}")
-
-    def show_audio_player_instructions(self) -> None:
-        """Show instructions for installing audio players on Ubuntu."""
-        instructions = """To play audio files, you need a media player installed.
-
-    Recommended players for Ubuntu:
-    1. mpv (lightweight): sudo apt install mpv
-    2. VLC (full-featured): sudo apt install vlc
-    3. Rhythmbox (music player): sudo apt install rhythmbox
-
-    After installation, try double-clicking again."""
-
-        messagebox.showinfo("Media Player Required", instructions)
 
     def on_json_changed(self, _event: tk.Event | None = None) -> None:
         """Enable/disable JSON save button based on changes."""
@@ -826,35 +788,7 @@ class DFApp(ctk.CTk):
                     row = sorted_rows[i]
                     orig_idx = row["orig_index"]
 
-                    # Create values tuple in the current column order
-                    values = []
-                    for col in self.column_order:
-                        if col == "disc":
-                            val = row.get("Discnumber", "")
-                        elif col == "track":
-                            val = row.get("Track", "")
-                        elif col == "special":
-                            val = row.get("Special", "")
-                        elif col == "date":
-                            val = row.get("Date", "")
-                        elif col == "version":
-                            val = row.get("Version", 0.0)
-                            val = str(int(val)) if isinstance(val, float) and val.is_integer() else str(val)
-                        elif col == "title":
-                            val = row.get("Title", "")
-                        elif col == "artist":
-                            val = row.get("Artist", "")
-                        elif col == "coverartist":
-                            val = row.get("CoverArtist", "")
-                        elif col == "comment":
-                            val = row.get("Comment", "")
-                        elif col == "file":
-                            val = row.get("file", "")
-                        else:
-                            val = ""
-                        values.append(val)
-
-                    self.tree.insert("", "end", iid=str(orig_idx), values=tuple(values))
+                    self.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
                     self.visible_file_indices.append(orig_idx)
 
                 # Update progress for tree population
@@ -1117,8 +1051,8 @@ class DFApp(ctk.CTk):
         if region == "heading":
             column = self.tree.identify_column(event.x)
             column_index = int(column.replace("#", "")) - 1
-            if 0 <= column_index < len(self.column_order):
-                self.dragged_column = self.column_order[column_index]
+            if 0 <= column_index < len(DFApp.COLUMN_ORDER):
+                self.dragged_column = DFApp.COLUMN_ORDER[column_index]
                 self.tree.bind("<B1-Motion>", self.on_column_drag)
                 self.tree.bind("<ButtonRelease-1>", self.on_column_drop)
 
@@ -1132,8 +1066,8 @@ class DFApp(ctk.CTk):
             except Exception:
                 column_index = None
 
-            if column_index is not None and 0 <= column_index < len(self.column_order):
-                target = self.column_order[column_index]
+            if column_index is not None and 0 <= column_index < len(DFApp.COLUMN_ORDER):
+                target = DFApp.COLUMN_ORDER[column_index]
                 # Only update if changed
                 if target != self._highlighted_column:
                     # clear previous
@@ -1167,12 +1101,12 @@ class DFApp(ctk.CTk):
                 except Exception:
                     drop_index = None
 
-                if drop_index is not None and 0 <= drop_index < len(self.column_order):
+                if drop_index is not None and 0 <= drop_index < len(DFApp.COLUMN_ORDER):
                     # Reorder the columns
-                    current_index = self.column_order.index(self.dragged_column)
+                    current_index = DFApp.COLUMN_ORDER.index(self.dragged_column)
                     if current_index != drop_index:
-                        self.column_order.pop(current_index)
-                        self.column_order.insert(drop_index, self.dragged_column)
+                        DFApp.COLUMN_ORDER.pop(current_index)
+                        DFApp.COLUMN_ORDER.insert(drop_index, self.dragged_column)
                         self.rebuild_tree_columns()
 
             self.dragged_column = None
@@ -1204,20 +1138,20 @@ class DFApp(ctk.CTk):
                 self.tree.heading(col, text="")
 
         column_configs = {
-            "title": ("Title", 180, "w"),
-            "artist": ("Artist", 100, "w"),
-            "coverartist": ("Cover Artist", 100, "w"),
-            "version": ("Version", 70, "center"),
-            "disc": ("Disc", 40, "center"),
-            "track": ("Track", 40, "center"),
-            "date": ("Date", 70, "center"),
-            "comment": ("Comment", 120, "w"),
-            "special": ("Special", 60, "center"),  # NEW: Added Special column
-            "file": ("File", 120, "w"),
+            MetadataFields.UI_TITLE: ("Title", 180, "w"),
+            MetadataFields.UI_ARTIST: ("Artist", 100, "w"),
+            MetadataFields.UI_COVER_ARTIST: ("Cover Artist", 100, "w"),
+            MetadataFields.UI_VERSION: ("Version", 70, "center"),
+            MetadataFields.UI_DISC: ("Disc", 40, "center"),
+            MetadataFields.UI_TRACK: ("Track", 40, "center"),
+            MetadataFields.UI_DATE: ("Date", 70, "center"),
+            MetadataFields.UI_COMMENT: ("Comment", 120, "w"),
+            MetadataFields.UI_SPECIAL: ("Special", 60, "center"),
+            MetadataFields.UI_FILE: ("File", 120, "w"),
         }
 
         # Recreate columns in new order
-        new_columns = list(self.column_order)
+        new_columns = list(DFApp.COLUMN_ORDER)
         self.tree["columns"] = new_columns
 
         for col in new_columns:
@@ -1294,9 +1228,9 @@ class DFApp(ctk.CTk):
 
             # column order and widths
             try:
-                data["column_order"] = list(self.column_order)
+                data["column_order"] = DFApp.COLUMN_ORDER
                 widths = {}
-                for col in self.column_order:
+                for col in DFApp.COLUMN_ORDER:
                     try:
                         info = self.tree.column(col)
                         widths[col] = int(info.get("width", 0))
@@ -1304,7 +1238,7 @@ class DFApp(ctk.CTk):
                         widths[col] = 0
                 data["column_widths"] = widths
             except Exception:
-                data["column_order"] = self.column_order
+                data["column_order"] = DFApp.COLUMN_ORDER
                 data["column_widths"] = {}
 
             # sort rules
@@ -1357,7 +1291,7 @@ class DFApp(ctk.CTk):
             col_widths = data.get("column_widths", {})
             if col_order and isinstance(col_order, list):
                 # apply order
-                self.column_order = col_order
+                DFApp.COLUMN_ORDER = col_order
                 # rebuild columns to new order
                 with contextlib.suppress(Exception):
                     self.rebuild_tree_columns()
@@ -1382,14 +1316,14 @@ class DFApp(ctk.CTk):
                 for i, r in enumerate(sort_rules):
                     if i < len(self.sort_rules):
                         try:
-                            self.sort_rules[i].field_var.set(r.get("field", self.sort_fields[0]))
+                            self.sort_rules[i].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
                             self.sort_rules[i].order_var.set(r.get("order", "asc"))
                         except Exception:
                             pass
                     else:
                         try:
                             self.add_sort_rule(is_first=False)
-                            self.sort_rules[-1].field_var.set(r.get("field", self.sort_fields[0]))
+                            self.sort_rules[-1].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
                             self.sort_rules[-1].order_var.set(r.get("order", "asc"))
                         except Exception:
                             pass
@@ -1441,6 +1375,19 @@ class DFApp(ctk.CTk):
         except Exception:
             with contextlib.suppress(Exception):
                 self.quit()
+
+    def _get_row_values(self, row: dict) -> tuple:
+        """Extract and format values for treeview columns from a data row."""
+        values = []
+        for col in DFApp.COLUMN_ORDER:
+            data_key = RuleManager.COL_MAP.get(col)
+            if col == MetadataFields.UI_VERSION:
+                v = row.get(MetadataFields.VERSION, 0.0)
+                val = str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
+            else:
+                val = row.get(data_key, "") if data_key else ""
+            values.append(str(val))
+        return tuple(values)
 
     # -------------------------
     # JSON Editing Functions - UPDATED with prefix support
@@ -1534,20 +1481,20 @@ class DFApp(ctk.CTk):
         path = self.mp3_files[index]
         # Create field values dictionary
         field_values = {
-            "title": json_data.get("Title") or Path(path).stem,
-            "artist": json_data.get("Artist") or "",
-            "coverartist": json_data.get("CoverArtist") or "",
-            "version": json_data.get("Version") or "",
-            "disc": json_data.get("Discnumber") or "",
-            "track": json_data.get("Track") or "",
-            "date": json_data.get("Date") or "",
-            "comment": json_data.get("Comment") or "",
-            "special": json_data.get("Special") or "",
-            "file": Path(path).name,
+            MetadataFields.UI_TITLE: json_data.get(MetadataFields.TITLE) or Path(path).stem,
+            MetadataFields.UI_ARTIST: json_data.get(MetadataFields.ARTIST) or "",
+            MetadataFields.UI_COVER_ARTIST: json_data.get(MetadataFields.COVER_ARTIST) or "",
+            MetadataFields.UI_VERSION: json_data.get(MetadataFields.VERSION) or "",
+            MetadataFields.UI_DISC: json_data.get(MetadataFields.DISC) or "",
+            MetadataFields.UI_TRACK: json_data.get(MetadataFields.TRACK) or "",
+            MetadataFields.UI_DATE: json_data.get(MetadataFields.DATE) or "",
+            MetadataFields.UI_COMMENT: json_data.get(MetadataFields.COMMENT) or "",
+            MetadataFields.UI_SPECIAL: json_data.get(MetadataFields.SPECIAL) or "",
+            MetadataFields.UI_FILE: Path(path).name,
         }
 
         # Create values tuple in the current column order
-        values = tuple(field_values[col] for col in self.column_order)
+        values = tuple(field_values[col] for col in DFApp.COLUMN_ORDER)
 
         # Update the treeview item
         self.tree.item(str(index), values=values)
@@ -1718,17 +1665,22 @@ class DFApp(ctk.CTk):
         current_rules = len([w for w in container.winfo_children() if isinstance(w, RuleRow)])
         is_first = current_rules == 0
 
-        row = RuleRow(container, self.rule_fields, self.rule_ops, delete_callback=self.delete_rule, is_first=is_first)
+        row = RuleRow(
+            container,
+            self.rule_ops,
+            delete_callback=self.delete_rule,
+            is_first=is_first,
+        )
         row.pack(fill="x", padx=6, pady=3)
 
         # default template suggestions based on container tab
         parent_tab = self._container_to_tab(container)
         if parent_tab == "title":
-            row.template_entry.insert(0, "{CoverArtist} - {Title}")
+            row.template_entry.insert(0, f"{{{MetadataFields.COVER_ARTIST}}} - {{{MetadataFields.TITLE}}}")
         elif parent_tab == "artist":
-            row.template_entry.insert(0, "{CoverArtist}")
+            row.template_entry.insert(0, f"{{{MetadataFields.COVER_ARTIST}}}")
         elif parent_tab == "album":
-            row.template_entry.insert(0, "Archive VOL {Discnumber}")
+            row.template_entry.insert(0, f"Archive VOL {{{MetadataFields.DISC}}}")
 
         # FIXED: Use force preview update for immediate response
         def update_callback(*args) -> None:
@@ -1852,33 +1804,7 @@ class DFApp(ctk.CTk):
         sorted_rows = sorted_df.to_dicts()
         for row in sorted_rows:
             orig_idx = row["orig_index"]
-            values = []
-            for col in self.column_order:
-                if col == "disc":
-                    val = row.get("Discnumber", "")
-                elif col == "track":
-                    val = row.get("Track", "")
-                elif col == "special":
-                    val = row.get("Special", "")
-                elif col == "date":
-                    val = row.get("Date", "")
-                elif col == "version":
-                    val = row.get("Version", 0.0)
-                    val = str(int(val)) if isinstance(val, float) and val.is_integer() else str(val)
-                elif col == "title":
-                    val = row.get("Title", "")
-                elif col == "artist":
-                    val = row.get("Artist", "")
-                elif col == "coverartist":
-                    val = row.get("CoverArtist", "")
-                elif col == "comment":
-                    val = row.get("Comment", "")
-                elif col == "file":
-                    val = row.get("file", "")
-                else:
-                    val = ""
-                values.append(val)
-            self.tree.insert("", "end", iid=str(orig_idx), values=tuple(values))
+            self.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
             self.visible_file_indices.append(orig_idx)
 
         # Update search info label with count and filter summary
@@ -2395,13 +2321,12 @@ class DFApp(ctk.CTk):
                     is_first = i == 0
                     row = RuleRow(
                         cont,
-                        self.rule_fields,
                         self.rule_ops,
                         delete_callback=self.delete_rule,
                         is_first=is_first,
                     )
                     row.pack(fill="x", padx=6, pady=3)
-                    row.field_var.set(r.get("if_field", self.rule_fields[0]))
+                    row.field_var.set(r.get("if_field", MetadataFields.get_json_keys()[0]))
                     row.op_var.set(r.get("if_operator", self.rule_ops[0]))
                     row.value_entry.insert(0, r.get("if_value", ""))
                     row.template_entry.insert(0, r.get("then_template", ""))

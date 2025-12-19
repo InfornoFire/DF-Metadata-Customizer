@@ -1,10 +1,13 @@
+"""A collection of custom UI widgets for the Database Reformatter App."""
 import tkinter as tk
 
 import customtkinter as ctk
 
+from df_metadata_customizer.song_metadata import MetadataFields
+
 
 class SortRuleRow(ctk.CTkFrame):
-    def __init__(self, master, fields, move_callback, delete_callback, is_first=False, **kwargs):
+    def __init__(self, master, move_callback, delete_callback, is_first=False, **kwargs):
         super().__init__(master, **kwargs)
         self.is_first = is_first
         self.move_callback = move_callback
@@ -24,7 +27,7 @@ class SortRuleRow(ctk.CTkFrame):
             self.sort_label.grid(row=0, column=0, padx=(6, 8), pady=6, sticky="w")
 
         self.field_var = tk.StringVar()
-        self.field_menu = ctk.CTkOptionMenu(self, values=fields, variable=self.field_var, width=120)
+        self.field_menu = ctk.CTkOptionMenu(self, values=MetadataFields.get_ui_keys(), variable=self.field_var, width=120)
         self.field_menu.grid(row=0, column=1, padx=4, pady=6, sticky="ew")
 
         self.order_var = tk.StringVar(value="asc")
@@ -53,7 +56,7 @@ class SortRuleRow(ctk.CTkFrame):
 
 
 class RuleRow(ctk.CTkFrame):
-    def __init__(self, master, fields, operators, delete_callback, is_first=False, **kwargs):
+    def __init__(self, master, operators, delete_callback, is_first=False, **kwargs):
         super().__init__(master, **kwargs)
         self.delete_callback = delete_callback
         self.is_first = is_first
@@ -82,9 +85,9 @@ class RuleRow(ctk.CTkFrame):
         self.if_label.grid(row=0, column=1, padx=(4, 4), pady=3, sticky="w")
 
         self.field_var = tk.StringVar()
-        self.field_menu = ctk.CTkOptionMenu(self, values=fields, variable=self.field_var, width=120)
+        self.field_menu = ctk.CTkOptionMenu(self, values=MetadataFields.get_json_keys(), variable=self.field_var, width=120)
         self.field_menu.grid(row=0, column=2, padx=4, pady=3, sticky="w")
-        self.field_var.set(fields[0])
+        self.field_var.set(MetadataFields.get_json_keys()[0])
 
         self.op_var = tk.StringVar()
         self.op_menu = ctk.CTkOptionMenu(self, values=operators, variable=self.op_var, width=140)

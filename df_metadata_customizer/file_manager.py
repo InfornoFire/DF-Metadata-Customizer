@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 
 from df_metadata_customizer import mp3_utils
-from df_metadata_customizer.song_metadata import SongMetadata
+from df_metadata_customizer.song_metadata import MetadataFields, SongMetadata
 
 
 class FileManager:
@@ -18,15 +18,15 @@ class FileManager:
         self.schema = {
             "path": pl.Utf8,
             "song_id": pl.Utf8,
-            "Title": pl.Utf8,
-            "Artist": pl.Utf8,
-            "CoverArtist": pl.Utf8,
-            "Version": pl.Float64,
-            "Discnumber": pl.Utf8,
-            "Track": pl.Utf8,
-            "Date": pl.Utf8,
-            "Comment": pl.Utf8,
-            "Special": pl.Utf8,
+            MetadataFields.TITLE: pl.Utf8,
+            MetadataFields.ARTIST: pl.Utf8,
+            MetadataFields.COVER_ARTIST: pl.Utf8,
+            MetadataFields.VERSION: pl.Float64,
+            MetadataFields.DISC: pl.Utf8,
+            MetadataFields.TRACK: pl.Utf8,
+            MetadataFields.DATE: pl.Utf8,
+            MetadataFields.COMMENT: pl.Utf8,
+            MetadataFields.SPECIAL: pl.Utf8,
             "_prefix": pl.Utf8,
             "raw_json": pl.Object,
         }
@@ -42,13 +42,13 @@ class FileManager:
         # Convert staging to rows
         rows = []
         for path, (jsond, prefix) in self._staging.items():
-            title = jsond.get("Title", "")
-            artist = jsond.get("Artist", "")
-            cover_artist = jsond.get("CoverArtist", "")
+            title = jsond.get(MetadataFields.TITLE, "")
+            artist = jsond.get(MetadataFields.ARTIST, "")
+            cover_artist = jsond.get(MetadataFields.COVER_ARTIST, "")
             song_id = f"{title}|{artist}|{cover_artist}"
 
             # Robust version parsing
-            raw_ver = jsond.get("Version", 0)
+            raw_ver = jsond.get(MetadataFields.VERSION, 0)
             try:
                 version = float(raw_ver)
             except (ValueError, TypeError):
@@ -60,15 +60,15 @@ class FileManager:
                 {
                     "path": path,
                     "song_id": song_id,
-                    "Title": title,
-                    "Artist": artist,
-                    "CoverArtist": cover_artist,
-                    "Version": version,
-                    "Discnumber": jsond.get("Discnumber", ""),
-                    "Track": jsond.get("Track", ""),
-                    "Date": jsond.get("Date", ""),
-                    "Comment": jsond.get("Comment", ""),
-                    "Special": jsond.get("Special", ""),
+                    MetadataFields.TITLE: title,
+                    MetadataFields.ARTIST: artist,
+                    MetadataFields.COVER_ARTIST: cover_artist,
+                    MetadataFields.VERSION: version,
+                    MetadataFields.DISC: jsond.get(MetadataFields.DISC, ""),
+                    MetadataFields.TRACK: jsond.get(MetadataFields.TRACK, ""),
+                    MetadataFields.DATE: jsond.get(MetadataFields.DATE, ""),
+                    MetadataFields.COMMENT: jsond.get(MetadataFields.COMMENT, ""),
+                    MetadataFields.SPECIAL: jsond.get(MetadataFields.SPECIAL, ""),
                     "_prefix": prefix,
                     "raw_json": jsond,
                 },
@@ -179,13 +179,13 @@ class FileManager:
         jsond, prefix = self.get_file_data_with_prefix(file_path)
 
         # Calculate is_latest
-        title = jsond.get("Title", "") or Path(file_path).stem
-        artist = jsond.get("Artist", "")
-        cover_artist = jsond.get("CoverArtist", "")
+        title = jsond.get(MetadataFields.TITLE, "") or Path(file_path).stem
+        artist = jsond.get(MetadataFields.ARTIST, "")
+        cover_artist = jsond.get(MetadataFields.COVER_ARTIST, "")
         song_id = f"{title}|{artist}|{cover_artist}"
 
         # Parse version
-        raw_ver = jsond.get("Version", 0)
+        raw_ver = jsond.get(MetadataFields.VERSION, 0)
         try:
             version = float(raw_ver)
         except (ValueError, TypeError):
@@ -208,9 +208,22 @@ class FileManager:
 
         if self.df.height == 0:
             # Return empty data structure with correct schema if no data loaded
-            cols = ["Title", "Artist", "CoverArtist", "Version", "Discnumber", "Track", "Date", "Comment", "Special", "file"]
+            cols = [
+                MetadataFields.UI_TITLE,
+                MetadataFields.UI_ARTIST,
+                MetadataFields.UI_COVER_ARTIST,
+                MetadataFields.UI_VERSION,
+                MetadataFields.UI_DISC,
+                MetadataFields.UI_TRACK,
+                MetadataFields.UI_DATE,
+                MetadataFields.UI_COMMENT,
+                MetadataFields.UI_SPECIAL,
+                MetadataFields.UI_FILE,
+            ]
             # Create empty columns with appropriate types
-            return paths_df.with_columns([pl.lit("").alias(c) for c in cols if c != "file"]).with_columns(pl.lit("").alias("file"))
+            return paths_df.with_columns(
+                [pl.lit("").alias(c) for c in cols if c != MetadataFields.UI_FILE]
+            ).with_columns(pl.lit("").alias(MetadataFields.UI_FILE))
 
         # Join with stored data
         joined = paths_df.join(self.df, on="path", how="left")
@@ -222,9 +235,10 @@ class FileManager:
 
         # Add 'file' column (filename) using map_elements for safety with paths
         return joined.with_columns(
-            pl.col("path").map_elements(lambda p: Path(p).name if p else "", return_dtype=pl.Utf8).alias("file")
+            pl.col("path")
+            .map_elements(lambda p: Path(p).name if p else "", return_dtype=pl.Utf8)
+            .alias(MetadataFields.FILE)
         )
-
 
     def calculate_statistics(self) -> dict:
         """Calculate statistics using Polars."""
@@ -252,36 +266,38 @@ class FileManager:
         df = self.df
 
         # Filter out empty titles
-        df = df.filter(pl.col("Title").str.strip_chars() != "")
+        df = df.filter(pl.col(MetadataFields.TITLE).str.strip_chars() != "")
 
         stats = {}
         stats["all_songs"] = df.height
 
         # Unique TA
-        stats["unique_ta"] = df.select(["Title", "Artist"]).n_unique()
+        stats["unique_ta"] = df.select([MetadataFields.TITLE, MetadataFields.ARTIST]).n_unique()
 
         # Unique TAC
-        stats["unique_tac"] = df.select(["Title", "Artist", "CoverArtist"]).n_unique()
+        stats["unique_tac"] = df.select(
+            [MetadataFields.TITLE, MetadataFields.ARTIST, MetadataFields.COVER_ARTIST]
+        ).n_unique()
 
         # Categories
         # Neuro
-        neuro_df = df.filter(pl.col("CoverArtist") == "Neuro")
+        neuro_df = df.filter(pl.col(MetadataFields.COVER_ARTIST) == "Neuro")
         stats["neuro_solos_total"] = neuro_df.height
-        stats["neuro_solos_unique"] = neuro_df.select(["Title", "Artist"]).n_unique()
+        stats["neuro_solos_unique"] = neuro_df.select([MetadataFields.TITLE, MetadataFields.ARTIST]).n_unique()
 
         # Evil
-        evil_df = df.filter(pl.col("CoverArtist") == "Evil")
+        evil_df = df.filter(pl.col(MetadataFields.COVER_ARTIST) == "Evil")
         stats["evil_solos_total"] = evil_df.height
-        stats["evil_solos_unique"] = evil_df.select(["Title", "Artist"]).n_unique()
+        stats["evil_solos_unique"] = evil_df.select([MetadataFields.TITLE, MetadataFields.ARTIST]).n_unique()
 
         # Duets
-        duets_df = df.filter(pl.col("CoverArtist") == "Neuro & Evil")
+        duets_df = df.filter(pl.col(MetadataFields.COVER_ARTIST) == "Neuro & Evil")
         stats["duets_total"] = duets_df.height
-        stats["duets_unique"] = duets_df.select(["Title", "Artist"]).n_unique()
+        stats["duets_unique"] = duets_df.select([MetadataFields.TITLE, MetadataFields.ARTIST]).n_unique()
 
         # Other
-        other_df = df.filter(~pl.col("CoverArtist").is_in(["Neuro", "Evil", "Neuro & Evil"]))
+        other_df = df.filter(~pl.col(MetadataFields.COVER_ARTIST).is_in(["Neuro", "Evil", "Neuro & Evil"]))
         stats["other_total"] = other_df.height
-        stats["other_unique"] = other_df.select(["Title", "Artist"]).n_unique()
+        stats["other_unique"] = other_df.select([MetadataFields.TITLE, MetadataFields.ARTIST]).n_unique()
 
         return stats

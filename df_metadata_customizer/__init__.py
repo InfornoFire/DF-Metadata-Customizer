@@ -5,11 +5,12 @@ from .dialogs import ProgressDialog, StatisticsDialog
 from .file_manager import FileManager
 from .image_utils import OptimizedImageCache
 from .rule_manager import RuleManager
-from .song_metadata import SongMetadata
+from .song_metadata import MetadataFields, SongMetadata
 from .widgets import RuleRow, SortRuleRow
 
 __all__ = [
     "FileManager",
+    "MetadataFields",
     "OptimizedImageCache",
     "ProgressDialog",
     "RuleManager",

@@ -5,24 +5,24 @@ from typing import Final
 
 import polars as pl
 
-from df_metadata_customizer.song_metadata import SongMetadata
+from df_metadata_customizer.song_metadata import MetadataFields, SongMetadata
 from df_metadata_customizer.widgets import SortRuleRow
 
 
 class RuleManager:
     """Utility class for managing and applying metadata rules."""
 
-    _COL_MAP: Final = {
-        "title": "Title",
-        "artist": "Artist",
-        "coverartist": "CoverArtist",
-        "version": "Version",
-        "disc": "Discnumber",
-        "track": "Track",
-        "date": "Date",
-        "comment": "Comment",
-        "special": "Special",
-        "file": "file",
+    COL_MAP: Final = {
+        MetadataFields.UI_TITLE: MetadataFields.TITLE,
+        MetadataFields.UI_ARTIST: MetadataFields.ARTIST,
+        MetadataFields.UI_COVER_ARTIST: MetadataFields.COVER_ARTIST,
+        MetadataFields.UI_VERSION: MetadataFields.VERSION,
+        MetadataFields.UI_DISC: MetadataFields.DISC,
+        MetadataFields.UI_TRACK: MetadataFields.TRACK,
+        MetadataFields.UI_DATE: MetadataFields.DATE,
+        MetadataFields.UI_COMMENT: MetadataFields.COMMENT,
+        MetadataFields.UI_SPECIAL: MetadataFields.SPECIAL,
+        MetadataFields.UI_FILE: MetadataFields.FILE,
     }
 
     @staticmethod
@@ -35,8 +35,9 @@ class RuleManager:
         filters = []
 
         # regex to find key<op>value tokens; value may be quoted
+        fields_pattern = "|".join(re.escape(k) for k in MetadataFields.get_ui_keys())
         token_re = re.compile(
-            r"(?i)\b(title|artist|coverartist|version|disc|track|date|comment|special|file)\s*(==|!=|>=|<=|>|<|=|~|!~)\s*(?:\"([^\"]+)\"|'([^']+)'|(\S+))",
+            rf"(?i)\b({fields_pattern})\s*(==|!=|>=|<=|>|<|=|~|!~)\s*(?:\"([^\"]+)\"|'([^']+)'|(\S+))",
         )
 
         # find all matches
@@ -46,7 +47,7 @@ class RuleManager:
             val = m.group(3) or m.group(4) or m.group(5) or ""
 
             # Special handling for version=latest
-            if key == "version" and val.lower() == "latest":
+            if key == MetadataFields.UI_VERSION and val.lower() == "latest":
                 filters.append({"field": key, "op": "==", "value": "_latest_"})
             else:
                 filters.append({"field": key, "op": op, "value": val})
@@ -75,13 +76,13 @@ class RuleManager:
             field = flt["field"]
             op = flt["op"]
             val = flt["value"]
-            col_name = RuleManager._COL_MAP.get(field, field)
+            col_name = RuleManager.COL_MAP.get(field, field)
 
-            if col_name not in filtered_df.columns and field != "version":
+            if col_name not in filtered_df.columns and field != MetadataFields.UI_VERSION:
                 continue
 
             # Special handling for version=latest
-            if field == "version" and val == "_latest_":
+            if field == MetadataFields.UI_VERSION and val == "_latest_":
                 if "is_latest" in filtered_df.columns:
                     filtered_df = filtered_df.filter(pl.col("is_latest"))
                 continue
@@ -89,7 +90,7 @@ class RuleManager:
             col_expr = pl.col(col_name)
 
             # Handle numeric version comparison
-            if col_name == "Version":
+            if col_name == MetadataFields.VERSION:
                 try:
                     val_float = float(val)
                     if op == ">":
@@ -127,7 +128,7 @@ class RuleManager:
 
         # Free terms
         if free_terms:
-            search_cols = [pl.col(c) for c in RuleManager._COL_MAP.values() if c in filtered_df.columns]
+            search_cols = [pl.col(c) for c in RuleManager.COL_MAP.values() if c in filtered_df.columns]
             if search_cols:
                 concat_expr = pl.concat_str(search_cols, separator=" ").str.to_lowercase()
                 for term in free_terms:
@@ -244,7 +245,7 @@ class RuleManager:
             order = rule["order"]
 
             # Map UI field names to DataFrame columns
-            col_name = RuleManager._COL_MAP.get(field, field)
+            col_name = RuleManager.COL_MAP.get(field, field)
 
             # Check if column exists
             if col_name not in df.columns:
@@ -254,10 +255,10 @@ class RuleManager:
             expr = pl.col(col_name)
 
             # Handle numeric casting for specific columns
-            if field in ["disc", "track", "special"]:
+            if field in [MetadataFields.UI_DISC, MetadataFields.UI_TRACK, MetadataFields.UI_SPECIAL]:
                 # Cast to Int64, fill null/error with 0
                 expr = expr.cast(pl.Int64, strict=False).fill_null(0)
-            elif field == "version":
+            elif field == MetadataFields.UI_VERSION:
                 # Already Float64
                 expr = expr.fill_null(0.0)
             else:

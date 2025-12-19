@@ -1,6 +1,44 @@
 """Song metadata wrapper providing safe access and defaults."""
 
-from pathlib import Path
+from enum import StrEnum
+
+
+class MetadataFields(StrEnum):
+    """Centralized field names for metadata and UI."""
+
+    # JSON keys
+    TITLE = "Title"
+    ARTIST = "Artist"
+    COVER_ARTIST = "CoverArtist"
+    VERSION = "Version"
+    DISC = "Discnumber"
+    TRACK = "Track"
+    DATE = "Date"
+    COMMENT = "Comment"
+    SPECIAL = "Special"
+    FILE = "file"
+
+    # UI keys
+    UI_TITLE = "title"
+    UI_ARTIST = "artist"
+    UI_COVER_ARTIST = "coverartist"
+    UI_VERSION = "version"
+    UI_DISC = "disc"
+    UI_TRACK = "track"
+    UI_DATE = "date"
+    UI_COMMENT = "comment"
+    UI_SPECIAL = "special"
+    UI_FILE = "file"
+
+    @classmethod
+    def get_json_keys(cls) -> list[str]:
+        """Return list of all JSON keys."""
+        return [m.value for m in cls if not m.name.startswith("UI_")]
+
+    @classmethod
+    def get_ui_keys(cls) -> list[str]:
+        """Return list of all UI keys."""
+        return [m.value for m in cls if m.name.startswith("UI_")]
 
 
 class SongMetadata:
@@ -16,23 +54,23 @@ class SongMetadata:
     def get(self, field: str) -> str:
         """Get value from metadata using properties or raw data."""
         f = field.lower()
-        if f == "title":
+        if f == MetadataFields.UI_TITLE:
             return self.title
-        if f == "artist":
+        if f == MetadataFields.UI_ARTIST:
             return self.artist
-        if f == "coverartist":
+        if f == MetadataFields.UI_COVER_ARTIST:
             return self.coverartist
-        if f == "version":
+        if f == MetadataFields.UI_VERSION:
             return self.version_str
-        if f in ("disc", "discnumber"):
+        if f in (MetadataFields.UI_DISC, MetadataFields.DISC.lower()):
             return self.disc
-        if f == "track":
+        if f == MetadataFields.UI_TRACK:
             return self.track
-        if f == "date":
+        if f == MetadataFields.UI_DATE:
             return self.date
-        if f == "comment":
+        if f == MetadataFields.UI_COMMENT:
             return self.comment
-        if f == "special":
+        if f == MetadataFields.UI_SPECIAL:
             return self.special
 
         val = self._data.get(field)
@@ -44,64 +82,50 @@ class SongMetadata:
         return self._data
 
     @property
-    def song_id(self) -> str:
-        """Return a unique identifier for the song."""
-        return f"{self.title}|{self.artist}|{self.coverartist}"
-
-    @property
     def title(self) -> str:
         """Return the song title."""
-        return self._data.get("Title") or Path(self.path).stem
+        return self._data.get(MetadataFields.TITLE) or ""
 
     @property
     def artist(self) -> str:
         """Return the song artist."""
-        return self._data.get("Artist") or ""
+        return self._data.get(MetadataFields.ARTIST) or ""
 
     @property
     def coverartist(self) -> str:
         """Return the cover artist."""
-        return self._data.get("CoverArtist") or ""
-
-    @property
-    def version(self) -> float:
-        """Return the song version as a float."""
-        raw = self._data.get("Version", 0)
-        try:
-            return float(raw)
-        except (ValueError, TypeError):
-            return 0.0
+        return self._data.get(MetadataFields.COVER_ARTIST) or ""
 
     @property
     def version_str(self) -> str:
-        """Return the song version as a string."""
-        v = self.version
-        return str(int(v)) if v.is_integer() else str(v)
+        """Return the version as a string."""
+        v = self._data.get(MetadataFields.VERSION, 0)
+        return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
 
     @property
     def disc(self) -> str:
         """Return the disc number."""
-        return self._data.get("Discnumber") or ""
+        return self._data.get(MetadataFields.DISC) or ""
 
     @property
     def track(self) -> str:
         """Return the track number."""
-        return self._data.get("Track") or ""
+        return self._data.get(MetadataFields.TRACK) or ""
 
     @property
     def date(self) -> str:
         """Return the release date."""
-        return self._data.get("Date") or ""
+        return self._data.get(MetadataFields.DATE) or ""
 
     @property
     def comment(self) -> str:
         """Return the song comment."""
-        return self._data.get("Comment") or ""
+        return self._data.get(MetadataFields.COMMENT) or ""
 
     @property
     def special(self) -> str:
         """Return the special field value."""
-        return self._data.get("Special") or ""
+        return self._data.get(MetadataFields.SPECIAL) or ""
 
     @property
     def is_latest(self) -> bool:
