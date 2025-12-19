@@ -78,7 +78,7 @@ def write_json_to_mp3(path: str, json_data: dict | str) -> bool:
                 lang="ved",  # Use 'ved' for custom archive
                 desc="",  # Empty description
                 text=json_str,
-            )
+            ),
         )
 
         # Save the tags

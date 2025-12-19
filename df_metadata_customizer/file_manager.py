@@ -6,6 +6,7 @@ from pathlib import Path
 import polars as pl
 
 from df_metadata_customizer import mp3_utils
+from df_metadata_customizer.song_metadata import SongMetadata
 
 
 class FileManager:
@@ -28,7 +29,6 @@ class FileManager:
             "Special": pl.Utf8,
             "_prefix": pl.Utf8,
             "raw_json": pl.Object,
-            "is_latest": pl.Boolean,
         }
         self.df = pl.DataFrame(schema=self.schema)
         # Staging area for new/modified data before commit to DF
@@ -71,7 +71,6 @@ class FileManager:
                     "Special": jsond.get("Special", ""),
                     "_prefix": prefix,
                     "raw_json": jsond,
-                    "is_latest": False,
                 },
             )
 
@@ -86,38 +85,6 @@ class FileManager:
             self.df = new_df
 
         self._staging.clear()
-
-    def update_version_info(self) -> None:
-        """Recalculate version info and update DataFrame is_latest column."""
-        self.commit()
-        if self.df.height == 0:
-            return
-
-        # Group by song_id to find versions
-        grouped = self.df.group_by("song_id").agg(
-            pl.col("Version"),
-            pl.col("path"),
-        )
-
-        latest_paths = set()
-
-        for row in grouped.iter_rows(named=True):
-            versions = row["Version"]
-            paths = row["path"]
-
-            if not versions:
-                continue
-
-            # Find latest version
-            max_ver = max(versions)
-
-            # Identify paths that have this version
-            for i, v in enumerate(versions):
-                if v == max_ver:
-                    latest_paths.add(paths[i])
-
-        # Update is_latest column in DF
-        self.df = self.df.with_columns(pl.col("path").is_in(latest_paths).alias("is_latest"))
 
     def get_song_versions(self, song_id: str) -> list[float]:
         """Get all versions for a song ID."""
@@ -139,8 +106,7 @@ class FileManager:
 
     def is_latest_version(self, song_id: str, version: float) -> bool:
         """Check if a given version is the latest for a song ID."""
-        latest_version = self.get_latest_version(song_id)
-        return version == latest_version
+        return version == self.get_latest_version(song_id)
 
     def update_file_data(self, file_path: str, json_data: dict, prefix_text: str) -> None:
         """Update the file data cache (stages change)."""
@@ -205,8 +171,29 @@ class FileManager:
 
     def get_file_data(self, file_path: str) -> dict:
         """Get cached file data with fallback (backward compatibility)."""
-        jsond, _prefix = self.get_file_data_with_prefix(file_path)
+        jsond, _ = self.get_file_data_with_prefix(file_path)
         return jsond
+
+    def get_metadata(self, file_path: str) -> SongMetadata:
+        """Get SongMetadata object for a file."""
+        jsond, prefix = self.get_file_data_with_prefix(file_path)
+
+        # Calculate is_latest
+        title = jsond.get("Title", "") or Path(file_path).stem
+        artist = jsond.get("Artist", "")
+        cover_artist = jsond.get("CoverArtist", "")
+        song_id = f"{title}|{artist}|{cover_artist}"
+
+        # Parse version
+        raw_ver = jsond.get("Version", 0)
+        try:
+            version = float(raw_ver)
+        except (ValueError, TypeError):
+            version = 0.0
+
+        is_latest = self.is_latest_version(song_id, version)
+
+        return SongMetadata(jsond, file_path, prefix, is_latest=is_latest)
 
     def get_view_data(self, paths: list[str]) -> pl.DataFrame:
         """Get data for specific paths in order, formatted for treeview."""

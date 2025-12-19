@@ -9,6 +9,7 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
+from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 from PIL import Image
@@ -19,6 +20,9 @@ from df_metadata_customizer.file_manager import FileManager
 from df_metadata_customizer.image_utils import OptimizedImageCache
 from df_metadata_customizer.rule_manager import RuleManager
 from df_metadata_customizer.widgets import RuleRow, SortRuleRow
+
+if TYPE_CHECKING:
+    from df_metadata_customizer.song_metadata import SongMetadata
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("dark-blue")
@@ -39,8 +43,7 @@ class DFApp(ctk.CTk):
         # Data model
         self.mp3_files = []  # list of file paths
         self.current_index = None
-        self.current_json = None
-        self.current_json_prefix = None  # Store the text before JSON
+        self.current_metadata: SongMetadata | None = None
         self.current_cover_bytes = None
         # Updated column order to include 'special' and remove forward slash handling
         self.column_order = [
@@ -176,7 +179,7 @@ class DFApp(ctk.CTk):
 
     def force_preview_update(self) -> None:
         """Force immediate preview update, bypassing any cover loading delays."""
-        if self.current_json:
+        if self.current_metadata:
             self.update_preview()
 
     def _build_ui(self) -> None:
@@ -735,7 +738,7 @@ class DFApp(ctk.CTk):
 
     def on_json_changed(self, _event: tk.Event | None = None) -> None:
         """Enable/disable JSON save button based on changes."""
-        if self.current_index is None or not self.current_json:
+        if self.current_index is None or not self.current_metadata:
             self.json_save_btn.configure(state="disabled")
             return
 
@@ -744,10 +747,10 @@ class DFApp(ctk.CTk):
 
             # Reconstruct original JSON with prefix
             original_json = {}
-            if self.current_json_prefix:
-                original_json["_prefix"] = self.current_json_prefix
-            if self.current_json:
-                original_json.update(self.current_json)
+            if self.current_metadata.prefix:
+                original_json["_prefix"] = self.current_metadata.prefix
+            if self.current_metadata.raw_data:
+                original_json.update(self.current_metadata.raw_data)
 
             original_text = json.dumps(original_json, indent=2, ensure_ascii=False)
 
@@ -776,7 +779,7 @@ class DFApp(ctk.CTk):
             """Load file data in batches for better performance."""
             total = len(self.mp3_files)
 
-            # Pre-load all file data first (populates FileManager cache/staging)
+            # Pre-load all file data first
             for i, p in enumerate(self.mp3_files):
                 self.file_manager.get_file_data_with_prefix(p)
 
@@ -787,9 +790,6 @@ class DFApp(ctk.CTk):
                     and not self.progress_dialog.update_progress(i, total, f"Loading metadata... {i}/{total}")
                 ):
                     return False
-
-            # Calculate versions immediately after loading
-            self.file_manager.update_version_info()
             return True
 
         def on_data_loaded(success: bool) -> None:
@@ -1507,11 +1507,7 @@ class DFApp(ctk.CTk):
             if success:
                 # Update cache with new data
                 self.file_manager.update_file_data(path, json_data, prefix_text)
-                self.current_json = json_data
-                self.current_json_prefix = prefix_text
-
-                # Update versions as data changed
-                self.file_manager.update_version_info()
+                self.current_metadata = self.file_manager.get_metadata(path)
 
                 # Update the treeview with new data
                 self.update_tree_row(self.current_index, json_data)
@@ -1633,15 +1629,13 @@ class DFApp(ctk.CTk):
 
                 # Update cache entries
                 self.file_manager.update_file_path(current_path, new_path)
-                # Update versions as path changed
-                self.file_manager.update_version_info()
 
                 if current_path in self.cover_cache:
                     self.cover_cache[new_path] = self.cover_cache.pop(current_path)
 
                 # Update treeview
-                if self.current_json:
-                    self.update_tree_row(self.current_index, self.current_json)
+                if self.current_metadata:
+                    self.update_tree_row(self.current_index, self.current_metadata.raw_data)
 
                 # Update filename entry to show new name
                 self.filename_var.set(new_name_or_error)
@@ -1924,20 +1918,18 @@ class DFApp(ctk.CTk):
             text=f"{self.current_index + 1}/{len(self.mp3_files)}  —  {Path(path).name}",
         )
 
-        # Load JSON from cache (with prefix)
-        json_data, prefix_text = self.file_manager.get_file_data_with_prefix(path)
-        self.current_json = json_data
-        self.current_json_prefix = prefix_text
+        # Load metadata
+        self.current_metadata = self.file_manager.get_metadata(path)
 
         # show JSON with prefix as a wrapper - FIXED: Better encoding handling
         self.json_text.delete("1.0", "end")
-        if self.current_json or self.current_json_prefix:
+        if self.current_metadata.raw_data or self.current_metadata.prefix:
             # Create a wrapper JSON that includes both prefix and original data
             wrapper_json = {}
-            if self.current_json_prefix:
-                wrapper_json["_prefix"] = self.current_json_prefix
-            if self.current_json:
-                wrapper_json.update(self.current_json)
+            if self.current_metadata.prefix:
+                wrapper_json["_prefix"] = self.current_metadata.prefix
+            if self.current_metadata.raw_data:
+                wrapper_json.update(self.current_metadata.raw_data)
 
             try:
                 # FIXED: Ensure proper encoding for JSON dump
@@ -2026,7 +2018,7 @@ class DFApp(ctk.CTk):
     # -------------------------
     def update_preview(self) -> None:
         """Update the output preview based on current rules and selected JSON."""
-        if not self.current_json:
+        if not self.current_metadata:
             self.lbl_out_title.configure(text="")
             self.lbl_out_artist.configure(text="")
             self.lbl_out_album.configure(text="")
@@ -2035,53 +2027,20 @@ class DFApp(ctk.CTk):
             self.lbl_out_versions.configure(text="")
             return
 
-        def safe_get(field: str) -> str:
-            value = self.current_json.get(field, "")
-            # Ensure we return a proper string, handling any encoding issues
-            if isinstance(value, bytes):
-                try:
-                    return value.decode("utf-8")
-                except Exception:
-                    return str(value)
-            return str(value) if value is not None else ""
-
-        fv = {
-            "Date": safe_get("Date"),
-            "Title": safe_get("Title"),
-            "Artist": safe_get("Artist"),
-            "CoverArtist": safe_get("CoverArtist"),
-            "Version": safe_get("Version"),
-            "Discnumber": safe_get("Discnumber"),
-            "Track": safe_get("Track"),
-            "Comment": safe_get("Comment"),
-            "Special": safe_get("Special"),
-        }
-
-        # Get latest version for this song to pass to RuleManager
-        current_title = fv.get("Title", "")
-        current_artist = fv.get("Artist", "")
-        current_coverartist = fv.get("CoverArtist", "")
-        song_key = f"{current_title}|{current_artist}|{current_coverartist}"
-
-        try:
-            current_ver = float(fv.get("Version", 0))
-        except (ValueError, TypeError):
-            current_ver = 0.0
-        is_latest = self.file_manager.is_latest_version(song_key, current_ver)
-        fv["is_latest"] = is_latest
+        metadata = self.current_metadata
 
         # FIXED: Use the correct method to collect rules for each tab
         new_title = RuleManager.apply_rules_list(
             self.collect_rules_for_tab("title"),
-            fv,
+            metadata,
         )
         new_artist = RuleManager.apply_rules_list(
             self.collect_rules_for_tab("artist"),
-            fv,
+            metadata,
         )
         new_album = RuleManager.apply_rules_list(
             self.collect_rules_for_tab("album"),
-            fv,
+            metadata,
         )
 
         # FIXED: Safe text setting for non-ASCII characters
@@ -2089,9 +2048,9 @@ class DFApp(ctk.CTk):
             self.lbl_out_title.configure(text=new_title)
             self.lbl_out_artist.configure(text=new_artist)
             self.lbl_out_album.configure(text=new_album)
-            self.lbl_out_disc.configure(text=fv.get("Discnumber", ""))
-            self.lbl_out_track.configure(text=fv.get("Track", ""))
-            self.lbl_out_date.configure(text=fv.get("Date", ""))
+            self.lbl_out_disc.configure(text=metadata.disc)
+            self.lbl_out_track.configure(text=metadata.track)
+            self.lbl_out_date.configure(text=metadata.date)
         except Exception as e:
             print(f"Error setting preview text: {e}")
             # Fallback: set empty text to avoid freezing
@@ -2100,7 +2059,7 @@ class DFApp(ctk.CTk):
             self.lbl_out_album.configure(text="")
 
         # Show all versions for current song (considering title + artist + coverartist)
-        # song_key already calculated above
+        song_key = f"{metadata.title}|{metadata.artist}|{metadata.coverartist}"
 
         versions = self.file_manager.get_song_versions(song_key)
         if versions:
@@ -2195,41 +2154,22 @@ class DFApp(ctk.CTk):
                     break
 
                 try:
-                    j = self.file_manager.get_file_data(p)
-                    if not j:
+                    metadata = self.file_manager.get_metadata(p)
+                    if not metadata.raw_data:
                         errors.append(f"No metadata: {Path(p).name}")
                         continue
 
-                    fv = {
-                        "Date": j.get("Date", ""),
-                        "Title": j.get("Title", ""),
-                        "Artist": j.get("Artist", ""),
-                        "CoverArtist": j.get("CoverArtist", ""),
-                        "Version": j.get("Version", "0"),
-                        "Discnumber": j.get("Discnumber", ""),
-                        "Track": j.get("Track", ""),
-                        "Comment": j.get("Comment", ""),
-                        "Special": j.get("Special", ""),
-                    }
-
-                    song_key = f"{fv['Title']}|{fv['Artist']}|{fv['CoverArtist']}"
-                    try:
-                        current_ver = float(fv.get("Version", 0))
-                    except (ValueError, TypeError):
-                        current_ver = 0.0
-                    fv["is_latest"] = self.file_manager.is_latest_version(song_key, current_ver)
-
                     new_title = RuleManager.apply_rules_list(
                         self.collect_rules_for_tab("title"),
-                        fv,
+                        metadata,
                     )
                     new_artist = RuleManager.apply_rules_list(
                         self.collect_rules_for_tab("artist"),
-                        fv,
+                        metadata,
                     )
                     new_album = RuleManager.apply_rules_list(
                         self.collect_rules_for_tab("album"),
-                        fv,
+                        metadata,
                     )
 
                     # write tags
@@ -2241,9 +2181,9 @@ class DFApp(ctk.CTk):
                         title=new_title,
                         artist=new_artist,
                         album=new_album,
-                        track=fv.get("Track"),
-                        disc=fv.get("Discnumber"),
-                        date=fv.get("Date"),
+                        track=metadata.track,
+                        disc=metadata.disc,
+                        date=metadata.date,
                         cover_bytes=cover_bytes,
                         cover_mime=cover_mime,
                     ):

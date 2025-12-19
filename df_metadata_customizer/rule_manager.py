@@ -1,15 +1,29 @@
-""" "Rule management for metadata customization."""
+"""Rule management for metadata customization."""
 
 import re
-import warnings
+from typing import Final
 
 import polars as pl
 
+from df_metadata_customizer.song_metadata import SongMetadata
 from df_metadata_customizer.widgets import SortRuleRow
 
 
 class RuleManager:
     """Utility class for managing and applying metadata rules."""
+
+    _COL_MAP: Final = {
+        "title": "Title",
+        "artist": "Artist",
+        "coverartist": "CoverArtist",
+        "version": "Version",
+        "disc": "Discnumber",
+        "track": "Track",
+        "date": "Date",
+        "comment": "Comment",
+        "special": "Special",
+        "file": "file",
+    }
 
     @staticmethod
     def parse_search_query(q: str) -> tuple[list[dict[str, str]], list[str]]:
@@ -57,25 +71,11 @@ class RuleManager:
 
         filtered_df = df
 
-        # Map UI field names to DataFrame columns
-        col_map = {
-            "title": "Title",
-            "artist": "Artist",
-            "coverartist": "CoverArtist",
-            "version": "Version",
-            "disc": "Discnumber",
-            "track": "Track",
-            "date": "Date",
-            "comment": "Comment",
-            "special": "Special",
-            "file": "file",
-        }
-
         for flt in filters:
             field = flt["field"]
             op = flt["op"]
             val = flt["value"]
-            col_name = col_map.get(field, field)
+            col_name = RuleManager._COL_MAP.get(field, field)
 
             if col_name not in filtered_df.columns and field != "version":
                 continue
@@ -127,7 +127,7 @@ class RuleManager:
 
         # Free terms
         if free_terms:
-            search_cols = [pl.col(c) for c in col_map.values() if c in filtered_df.columns]
+            search_cols = [pl.col(c) for c in RuleManager._COL_MAP.values() if c in filtered_df.columns]
             if search_cols:
                 concat_expr = pl.concat_str(search_cols, separator=" ").str.to_lowercase()
                 for term in free_terms:
@@ -162,20 +162,21 @@ class RuleManager:
     @staticmethod
     def eval_rule_block(
         rule_block: list[dict[str, str]],
-        fv: dict[str, str | bool],
+        metadata: SongMetadata,
     ) -> bool:
         """Evaluate a block of rules with AND logic (all rules in block must match)."""
         if not rule_block:
             return False
-        return all(RuleManager.eval_single_rule(rule, fv) for rule in rule_block)
+        return all(RuleManager.eval_single_rule(rule, metadata) for rule in rule_block)
 
     @staticmethod
-    def eval_single_rule(rule: dict[str, str], fv: dict[str, str | bool]) -> bool:
+    def eval_single_rule(rule: dict[str, str], metadata: SongMetadata) -> bool:
         """Evaluate a single rule."""
         field = rule.get("if_field", "")
         op = rule.get("if_operator", "")
         val = rule.get("if_value", "")
-        actual = str(fv.get(field, ""))
+
+        actual = metadata.get(field)
 
         if op == "is":
             return actual == val
@@ -190,56 +191,31 @@ class RuleManager:
         if op == "is not empty":
             return actual != ""
         if op == "is latest version":
-            return bool(fv.get("is_latest", False))
+            return metadata.is_latest
         if op == "is not latest version":
-            return not bool(fv.get("is_latest", False))
+            return not metadata.is_latest
         return False
 
     @staticmethod
-    def apply_template(template: str, fv: dict[str, str | bool]) -> str:
+    def apply_template(template: str, metadata: SongMetadata) -> str:
         """Apply template with field values."""
         if not template:
             return ""
         try:
-            result = template
-            for k, v in fv.items():
-                if k == "is_latest":
-                    continue
-                placeholder = "{" + k + "}"
-                if placeholder in result:
-                    safe_value = str(v) if v is not None else ""
-                    result = result.replace(placeholder, safe_value)
-            # Also handle common field names
-            common_fields = {
-                "Title": fv.get("Title", ""),
-                "Artist": fv.get("Artist", ""),
-                "CoverArtist": fv.get("CoverArtist", ""),
-                "Version": fv.get("Version", ""),
-                "Discnumber": fv.get("Discnumber", ""),
-                "Track": fv.get("Track", ""),
-                "Date": fv.get("Date", ""),
-                "Comment": fv.get("Comment", ""),
-                "Special": fv.get("Special", ""),
-            }
-            for field_name, field_value in common_fields.items():
-                placeholder = "{" + field_name + "}"
-                if placeholder in result:
-                    safe_value = str(field_value) if field_value is not None else ""
-                    result = result.replace(placeholder, safe_value)
+            return re.sub(r"\{([^}]+)\}", lambda m: metadata.get(m.group(1)), template)
         except Exception:
             return ""
-        return result
 
     @staticmethod
-    def apply_rules_list(rules: list[dict[str, str]], fv: dict[str, str | bool]) -> str:
+    def apply_rules_list(rules: list[dict[str, str]], metadata: SongMetadata) -> str:
         """Apply rules list to field values with AND/OR grouping."""
         if not rules:
             return ""
         rule_blocks = RuleManager.group_rules_by_logic(rules)
         for block in rule_blocks:
-            if RuleManager.eval_rule_block(block, fv):
+            if RuleManager.eval_rule_block(block, metadata):
                 template = block[-1].get("then_template", "")
-                result = RuleManager.apply_template(template, fv)
+                result = RuleManager.apply_template(template, metadata)
                 if result.strip():
                     return result
         return ""
@@ -268,18 +244,7 @@ class RuleManager:
             order = rule["order"]
 
             # Map UI field names to DataFrame columns
-            col_name = {
-                "title": "Title",
-                "artist": "Artist",
-                "coverartist": "CoverArtist",
-                "version": "Version",
-                "disc": "Discnumber",
-                "track": "Track",
-                "date": "Date",
-                "comment": "Comment",
-                "special": "Special",
-                "file": "file",
-            }.get(field, field)
+            col_name = RuleManager._COL_MAP.get(field, field)
 
             # Check if column exists
             if col_name not in df.columns:
