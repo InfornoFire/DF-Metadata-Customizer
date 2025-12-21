@@ -279,20 +279,24 @@ class RuleManager:
                         value = 0
                 elif field in ["version"]:
                     try:
-                        # Try to extract numbers from version string
+                        # Parse version string as tuple of integers for proper comparison
                         nums = re.findall(r"\d+", str(value))
-                        value = int(nums[0]) if nums else 0
+                        value = tuple(int(n) for n in nums) if nums else (0,)
+                        # Pad with zeros to ensure consistent comparison (e.g., (3,) becomes (3, 0))
+                        value = value + (0,) * (3 - len(value))
                     except (ValueError, TypeError):
-                        value = 0
+                        value = (0, 0, 0)
                 else:
                     value = str(value).lower()
 
                 # Reverse order if descending
                 if order == "desc":
-                    if isinstance(value, (int, float)):
+                    if isinstance(value, tuple):
+                        # For version tuples, negate each number
+                        value = tuple(-n for n in value)
+                    elif isinstance(value, (int, float)):
                         value = -value
                     else:
-                        # For strings, we'll handle in the sort function
                         pass
 
                 key_parts.append(value)
