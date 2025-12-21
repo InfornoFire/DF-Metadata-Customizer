@@ -2,6 +2,7 @@
 
 import re
 import warnings
+from functools import cmp_to_key
 
 from df_metadata_customizer.widgets import SortRuleRow
 
@@ -164,7 +165,11 @@ class RuleManager:
 
     @staticmethod
     def apply_multi_sort(sort_rules: list[SortRuleRow], file_data: dict) -> dict | list:
-        """Apply multiple sort rules to file data."""
+        """Apply multiple sort rules to file data (positional tuple items).
+
+        This uses a comparator-based approach so each rule's ascending/descending
+        direction is respected at every level, not just the primary key.
+        """
         warnings.warn(
             "apply_multi_sort is deprecated, use apply_multi_sort_with_dict instead",
             DeprecationWarning,
@@ -176,76 +181,64 @@ class RuleManager:
         if not rules:
             return file_data
 
-        def sort_key(item: tuple[int, dict]) -> tuple:
-            """Create a sort key based on multiple rules."""
-            key_parts = []
+        # Map field name to positional index in the tuple (item[0] is original index)
+        field_names = [
+            "title",
+            "artist",
+            "coverartist",
+            "version",
+            "disc",
+            "track",
+            "date",
+            "comment",
+            "special",
+            "file",
+        ]
+
+        def parse_version(v: object) -> tuple:
+            nums = re.findall(r"\d+", str(v))
+            nums = tuple(int(n) for n in nums) if nums else (0,)
+            return nums + (0,) * (3 - len(nums)) if len(nums) < 3 else nums
+
+        def get_field_value_from_item(item: tuple[int, object], field: str):
+            _, *values = item
+            try:
+                idx = field_names.index(field)
+                raw = values[idx]
+            except ValueError:
+                raw = ""
+
+            if field in ["disc", "track", "special"]:
+                try:
+                    return int(raw) if raw else 0
+                except (ValueError, TypeError):
+                    return 0
+            if field == "version":
+                try:
+                    return parse_version(raw)
+                except Exception:
+                    return (0, 0, 0)
+            # Fallback to case-insensitive string compare
+            return str(raw).lower()
+
+        def compare(a: tuple[int, object], b: tuple[int, object]) -> int:
             for rule in rules:
                 field = rule["field"]
                 order = rule["order"]
 
-                # Get the value for this field (item[0] is index, rest are data)
-                field_index = [
-                    "title",
-                    "artist",
-                    "coverartist",
-                    "version",
-                    "disc",
-                    "track",
-                    "date",
-                    "comment",
-                    "special",
-                    "file",
-                ].index(field)
-                value = item[field_index + 1]  # +1 because item[0] is the original index
+                v1 = get_field_value_from_item(a, field)
+                v2 = get_field_value_from_item(b, field)
 
-                # Convert to appropriate type for sorting
-                if field in ["disc", "track", "special"]:
-                    try:
-                        value = int(value) if value else 0
-                    except (ValueError, TypeError):
-                        value = 0
-                elif field in ["version"]:
-                    try:
-                        # Try to extract numbers from version string
-                        nums = re.findall(r"\d+", str(value))
-                        value = int(nums[0]) if nums else 0
-                    except (ValueError, TypeError):
-                        value = 0
-                else:
-                    value = str(value).lower()
-
-                # Reverse order if descending
-                if order == "desc":
-                    if isinstance(value, (int, float)):
-                        value = -value
-                    else:
-                        # For strings, we'll handle in the sort function
-                        pass
-
-                key_parts.append(value)
-            return tuple(key_parts)
+                if v1 < v2:
+                    return -1 if order == "asc" else 1
+                if v1 > v2:
+                    return 1 if order == "asc" else -1
+            # Stable tie-breaker by original index
+            return a[0] - b[0]
 
         # Sort the data
         try:
-            sorted_data = sorted(file_data, key=sort_key)
-
-            # For descending string sorts, we need to handle them separately
-            for i, rule in enumerate(rules):
-                if rule["order"] == "desc" and rule["field"] in [
-                    "title",
-                    "artist",
-                    "coverartist",
-                    "comment",
-                    "file",
-                    "date",
-                ]:
-                    # Reverse the order for this specific field level
-                    # This is a simplified approach - for true multi-level descending sorts,
-                    # we'd need a more complex algorithm
-                    if i == 0:  # Only apply to primary sort for simplicity
-                        sorted_data.reverse()
-                    break
-
+            sorted_data = sorted(file_data, key=cmp_to_key(compare))
         except Exception as e:
             print(f"Sorting error: {e}")
             return file_data
@@ -254,75 +247,55 @@ class RuleManager:
 
     @staticmethod
     def apply_multi_sort_with_dict(sort_rules: list[SortRuleRow], file_data: dict) -> dict:
-        """Apply multiple sort rules to file data stored as dictionaries."""
+        """Apply multiple sort rules to file data stored as dictionaries.
+
+        Uses a comparator so each rule's direction is applied at its level.
+        """
         rules = RuleManager.get_sort_rules(sort_rules)
 
         if not rules:
             return file_data
 
-        def sort_key(item: tuple[int, dict]) -> tuple:
-            """Create a sort key based on multiple rules."""
-            _orig_idx, field_values = item
-            key_parts = []
+        def parse_version(v: object) -> tuple:
+            nums = re.findall(r"\d+", str(v))
+            nums = tuple(int(n) for n in nums) if nums else (0,)
+            return nums + (0,) * (3 - len(nums)) if len(nums) < 3 else nums
+
+        def get_field_value(field_values: dict, field: str):
+            raw = field_values.get(field, "")
+
+            if field in ["disc", "track", "special"]:
+                try:
+                    return int(raw) if raw else 0
+                except (ValueError, TypeError):
+                    return 0
+            if field == "version":
+                try:
+                    return parse_version(raw)
+                except Exception:
+                    return (0, 0, 0)
+            return str(raw).lower()
+
+        def compare(a: tuple[int, dict], b: tuple[int, dict]) -> int:
+            _ia, va = a
+            _ib, vb = b
             for rule in rules:
                 field = rule["field"]
                 order = rule["order"]
 
-                # Get the value for this field from the dictionary
-                value = field_values.get(field, "")
+                v1 = get_field_value(va, field)
+                v2 = get_field_value(vb, field)
 
-                # Convert to appropriate type for sorting
-                if field in ["disc", "track", "special"]:
-                    try:
-                        value = int(value) if value else 0
-                    except (ValueError, TypeError):
-                        value = 0
-                elif field in ["version"]:
-                    try:
-                        # Parse version string as tuple of integers for proper comparison
-                        nums = re.findall(r"\d+", str(value))
-                        value = tuple(int(n) for n in nums) if nums else (0,)
-                        # Pad with zeros to ensure consistent comparison (e.g., (3,) becomes (3, 0))
-                        value = value + (0,) * (3 - len(value))
-                    except (ValueError, TypeError):
-                        value = (0, 0, 0)
-                else:
-                    value = str(value).lower()
-
-                # Reverse order if descending
-                if order == "desc":
-                    if isinstance(value, tuple):
-                        # For version tuples, negate each number
-                        value = tuple(-n for n in value)
-                    elif isinstance(value, (int, float)):
-                        value = -value
-                    else:
-                        pass
-
-                key_parts.append(value)
-            return tuple(key_parts)
+                if v1 < v2:
+                    return -1 if order == "asc" else 1
+                if v1 > v2:
+                    return 1 if order == "asc" else -1
+            # Stable tie-breaker by original index
+            return _ia - _ib
 
         # Sort the data
         try:
-            sorted_data = sorted(file_data, key=sort_key)
-
-            # For descending string sorts, we need to handle them separately
-            for i, rule in enumerate(rules):
-                if rule["order"] == "desc" and rule["field"] in [
-                    "title",
-                    "artist",
-                    "coverartist",
-                    "comment",
-                    "file",
-                    "date",
-                ]:
-                    # Reverse the order for this specific field level
-                    # This is a simplified approach - for true multi-level descending sorts,
-                    # we'd need a more complex algorithm
-                    if i == 0:  # Only apply to primary sort for simplicity
-                        sorted_data.reverse()
-                    break
-
+            sorted_data = sorted(file_data, key=cmp_to_key(compare))
         except Exception as e:
             print(f"Sorting error: {e}")
             return file_data
