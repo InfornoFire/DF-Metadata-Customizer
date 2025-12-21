@@ -233,45 +233,54 @@ class RuleManager:
         if not rules:
             return df
 
-        by = []
+        sort_exprs = []
+        by_cols = []
         descending = []
-        temp_cols = []
-
-        # We need to create temporary columns for sorting to handle types and case-insensitivity
-        df_sorted = df
 
         for i, rule in enumerate(rules):
             field = rule["field"]
-            order = rule["order"]
-
-            # Map UI field names to DataFrame columns
             col_name = RuleManager.COL_MAP.get(field, field)
-
-            # Check if column exists
             if col_name not in df.columns:
                 continue
 
-            temp_col = f"_sort_{i}"
-            expr = pl.col(col_name)
+            is_desc = rule["order"] == "desc"
+            base_col = pl.col(col_name)
 
-            # Handle numeric casting for specific columns
-            if field in [MetadataFields.UI_DISC, MetadataFields.UI_TRACK, MetadataFields.UI_SPECIAL]:
-                # Cast to Int64, fill null/error with 0
-                expr = expr.cast(pl.Int64, strict=False).fill_null(0)
-            elif field == MetadataFields.UI_VERSION:
-                # Already Float64
-                expr = expr.fill_null(0.0)
-            else:
-                # String sort - lowercase for case insensitive
-                expr = expr.str.to_lowercase()
+            match field:
+                case MetadataFields.UI_TRACK:
+                    # Track: split into number and total
+                    cols = [f"_sort_{i}_n", f"_sort_{i}_t"]
+                    sort_exprs.extend(
+                        [
+                            base_col.str.extract(r"^(\d+)", 1).cast(pl.Int64, strict=False).fill_null(0).alias(cols[0]),
+                            base_col.str.extract(r"/(\d+)", 1).cast(pl.Int64, strict=False).fill_null(0).alias(cols[1]),
+                        ],
+                    )
+                    by_cols.extend(cols)
+                    descending.extend([is_desc, is_desc])
 
-            df_sorted = df_sorted.with_columns(expr.alias(temp_col))
-            by.append(temp_col)
-            descending.append(order == "desc")
-            temp_cols.append(temp_col)
+                case MetadataFields.UI_DISC | MetadataFields.UI_SPECIAL:
+                    # Integer fields
+                    col = f"_sort_{i}"
+                    sort_exprs.append(base_col.cast(pl.Int64, strict=False).fill_null(0).alias(col))
+                    by_cols.append(col)
+                    descending.append(is_desc)
 
-        if by:
-            df_sorted = df_sorted.sort(by, descending=descending)
-            df_sorted = df_sorted.drop(temp_cols)
+                case MetadataFields.UI_VERSION:
+                    # Float fields
+                    col = f"_sort_{i}"
+                    sort_exprs.append(base_col.fill_null(0.0).alias(col))
+                    by_cols.append(col)
+                    descending.append(is_desc)
 
-        return df_sorted
+                case _:
+                    # String fields (case-insensitive)
+                    col = f"_sort_{i}"
+                    sort_exprs.append(base_col.str.to_lowercase().alias(col))
+                    by_cols.append(col)
+                    descending.append(is_desc)
+
+        if by_cols:
+            return df.with_columns(sort_exprs).sort(by_cols, descending=descending).drop(by_cols)
+
+        return df

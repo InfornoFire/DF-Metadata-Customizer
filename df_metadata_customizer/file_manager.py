@@ -223,7 +223,7 @@ class FileManager:
             ]
             # Create empty columns with appropriate types
             return paths_df.with_columns(
-                [pl.lit("").alias(c) for c in cols if c != MetadataFields.UI_FILE]
+                [pl.lit("").alias(c) for c in cols if c != MetadataFields.UI_FILE],
             ).with_columns(pl.lit("").alias(MetadataFields.UI_FILE))
 
         # Join with stored data
@@ -238,7 +238,7 @@ class FileManager:
         return joined.with_columns(
             pl.col("path")
             .map_elements(lambda p: Path(p).name if p else "", return_dtype=pl.Utf8)
-            .alias(MetadataFields.FILE)
+            .alias(MetadataFields.FILE),
         )
 
     def calculate_statistics(self) -> dict:
