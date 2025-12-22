@@ -1,4 +1,5 @@
 """Utilities for reading/writing MP3 ID3 tags and embedded JSON metadata."""
+
 import json
 import os
 import platform
@@ -7,6 +8,7 @@ import shutil
 import subprocess
 from functools import lru_cache
 from io import BytesIO
+from tkinter import messagebox
 
 from mutagen.id3 import APIC, COMM, ID3, TALB, TDRC, TIT2, TPE1, TPOS, TRCK, ID3NoHeaderError
 from mutagen.mp3 import MP3
@@ -78,7 +80,7 @@ def write_json_to_mp3(path: str, json_data: dict | str) -> bool:
                 lang="ved",  # Use 'ved' for custom archive
                 desc="",  # Empty description
                 text=json_str,
-            )
+            ),
         )
 
         # Save the tags
@@ -150,6 +152,7 @@ def write_id3_tags(
         return False
     return True
 
+
 def play_song(file_path: str) -> bool:
     """Play a song using the system's default audio player."""
     if platform.system() == "Windows":
@@ -191,3 +194,17 @@ def play_song(file_path: str) -> bool:
 
         return success
     return True
+
+
+def show_audio_player_instructions() -> None:
+    """Show instructions for installing audio players on Ubuntu."""
+    instructions = """To play audio files, you need a media player installed.
+
+Recommended players for Ubuntu:
+1. mpv (lightweight): sudo apt install mpv
+2. VLC (full-featured): sudo apt install vlc
+3. Rhythmbox (music player): sudo apt install rhythmbox
+
+After installation, try double-clicking again."""
+
+    messagebox.showinfo("Media Player Required", instructions)
