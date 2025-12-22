@@ -33,7 +33,8 @@ jobs:
         run: uv sync
 
       - name: Build executable
-        run: uvx pyinstaller --onedir
+        run: pyinstaller
+          --onedir
           --name "DFMetadataCustomizer"
           --contents-directory "lib"
           --add-data "presets:presets"
