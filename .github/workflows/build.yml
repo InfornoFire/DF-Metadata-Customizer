@@ -23,13 +23,13 @@ jobs:
           python-version: '3.13'
 
       - name: Build executable
-        run: uvx pyinstaller --onedir \
-          --name "DF-Metadata-Customizer" \
-          --contents-directory "lib" \
-          --add-data "presets:presets" \
-          --noconsole \
-          --noconfirm \
-          --clean \
+        run: uvx pyinstaller --onedir
+          --name "DF-Metadata-Customizer"
+          --contents-directory "lib"
+          --add-data "presets:presets"
+          --noconsole
+          --noconfirm
+          --clean
           df_metadata_customizer\__main__.py
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
