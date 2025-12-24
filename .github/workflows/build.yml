@@ -2,6 +2,13 @@ name: Build Executables
 
 on:
   push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version'
+        required: true
 
 jobs:
   build:
@@ -32,6 +39,15 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Set version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
       - name: Build executable
         run: pyinstaller
           --onedir
@@ -43,7 +59,24 @@ jobs:
           --clean
           "df_metadata_customizer/__main__.py"
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - name: Upload artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: github.ref_type != 'tag'
         with:
           name: DFMetadataCustomizer-${{ matrix.os_name }}
           path: dist/DFMetadataCustomizer/
+      
+      - name: Zip artifacts
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          cd dist
+          zip -r DFMetadataCustomizer-${{ matrix.os_name }}-${{ env.VERSION }}.zip DFMetadataCustomizer/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        if: github.ref_type == 'tag'
+        with:
+          draft: true
+          tag_name: ${{ env.VERSION }}
+          files: dist/DFMetadataCustomizer-${{ matrix.os_name }}-${{ env.VERSION }}.zip
