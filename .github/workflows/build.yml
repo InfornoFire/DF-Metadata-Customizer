@@ -71,8 +71,8 @@ jobs:
         if: github.ref_type == 'tag'
         shell: bash
         run: |
-          cd dist
-          7z a DFMetadataCustomizer-${{ env.VERSION }}-${{ matrix.os_name }}.zip DFMetadataCustomizer/
+          cd dist/DFMetadataCustomizer
+          7z a ../DFMetadataCustomizer-${{ env.VERSION }}-${{ matrix.os_name }}.zip .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
