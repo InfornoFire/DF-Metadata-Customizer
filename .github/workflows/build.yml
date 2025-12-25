@@ -54,6 +54,7 @@ jobs:
           --name "DFMetadataCustomizer"
           --contents-directory "lib"
           --add-data "presets:presets"
+          --optimize 2
           --noconsole
           --noconfirm
           --clean
@@ -63,7 +64,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: github.ref_type != 'tag'
         with:
-          name: DFMetadataCustomizer-${{ matrix.os_name }}
+          name: DFMetadataCustomizer-${{ env.VERSION }}-${{ matrix.os_name }}
           path: dist/DFMetadataCustomizer/
       
       - name: Zip artifacts
@@ -71,7 +72,7 @@ jobs:
         shell: bash
         run: |
           cd dist
-          7z a DFMetadataCustomizer-${{ matrix.os_name }}-${{ env.VERSION }}.zip DFMetadataCustomizer/
+          7z a DFMetadataCustomizer-${{ env.VERSION }}-${{ matrix.os_name }}.zip DFMetadataCustomizer/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
@@ -79,4 +80,4 @@ jobs:
         with:
           draft: true
           tag_name: ${{ env.VERSION }}
-          files: dist/DFMetadataCustomizer-${{ matrix.os_name }}-${{ env.VERSION }}.zip
+          files: dist/DFMetadataCustomizer-${{ env.VERSION }}-${{ matrix.os_name }}.zip
