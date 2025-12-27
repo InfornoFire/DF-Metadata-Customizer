@@ -54,6 +54,8 @@ jobs:
           --name "DFMetadataCustomizer"
           --contents-directory "lib"
           --add-data "presets:presets"
+          --collect-all "customtkinter"
+          --collect-all "PIL"
           --optimize 2
           --noconsole
           --noconfirm
