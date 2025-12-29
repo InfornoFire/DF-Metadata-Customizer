@@ -11,8 +11,8 @@ from io import BytesIO
 from tkinter import messagebox
 
 from mutagen.id3 import APIC, COMM, ID3, TALB, TDRC, TIT2, TPE1, TPOS, TRCK, ID3NoHeaderError
-from mutagen.mp3 import MP3
 from PIL import Image
+from tinytag import TinyTag
 
 JSON_FIND_RE = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -26,35 +26,24 @@ def extract_json_from_mp3_cached(path: str) -> tuple[dict, str] | None:
 def extract_json_from_mp3(path: str) -> tuple[dict, str] | None:
     """Return (parsed JSON dict, prefix_text) or None."""
     try:
-        audio = MP3(path)
-        if not audio.tags:
+        tag = TinyTag.get(path)
+        text = tag.other.get("comment", "")
+        print(text)
+        if not text:
             return None
-        # Gather COMM frames
-        comms = [v for k, v in audio.tags.items() if k.startswith("COMM")]
-        for c in comms:
-            text = ""
-            try:
-                # COMM frame: .text may be list
-                text = "".join(c.text) if hasattr(c, "text") else str(c)
-            except Exception:
-                text = str(c)
-            m = JSON_FIND_RE.search(text)
-            if m:
-                raw_json = m.group(0)
-                # FIXED: Get the exact prefix without adding extra space
-                prefix_text = text[: m.start()].strip()
 
-                try:
-                    json_data = json.loads(raw_json)
-                except Exception:
-                    try:
-                        json_data = json.loads(raw_json.replace("'", '"'))
-                    except Exception:
-                        continue
-                return json_data, prefix_text
-    except Exception:
+        if isinstance(text, list):
+            text = "".join(text)
+
+        text = text.strip()
+
+        comm_data = json.loads(text)
+
+    except Exception as e:
+        print(f"Error parsing JSON from MP3 comment: {e}")
         return None
-    return None
+
+    return comm_data, ""
 
 
 def write_json_to_mp3(path: str, json_data: dict | str) -> bool:
