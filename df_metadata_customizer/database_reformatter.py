@@ -1041,12 +1041,9 @@ class DFApp(ctk.CTk):
 
             # Always load cover after theme change
             self._safe_cover_display_update("Loading cover...")
-            print("Testing")
             if self.current_index is not None:
-                print("Testing2")
                 self.load_current_cover()
             else:
-                print("Testing3")
                 self._safe_cover_display_update("No cover", clear_image=True)
         except Exception as e:
             print(f"Error toggling theme: {e}")
