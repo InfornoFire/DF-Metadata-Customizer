@@ -44,11 +44,10 @@ class MetadataFields(StrEnum):
 class SongMetadata:
     """A wrapper around song metadata that provides safe access and defaults."""
 
-    def __init__(self, data: dict, path: str, prefix: str = "", *, is_latest: bool = False) -> None:
+    def __init__(self, data: dict, path: str, *, is_latest: bool = False) -> None:
         """Initialize SongMetadata."""
         self._data = data
         self.path = path
-        self.prefix = prefix
         self._is_latest = is_latest
 
     def get(self, field: str) -> str:

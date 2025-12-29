@@ -16,13 +16,8 @@ from tinytag import TinyTag
 
 
 @lru_cache(maxsize=1000)
-def extract_json_from_mp3_cached(path: str) -> tuple[dict, str] | None:
-    """Cache version of extract_json_from_mp3."""
-    return extract_json_from_mp3(path)
-
-
-def extract_json_from_mp3(path: str) -> tuple[dict, str] | None:
-    """Return (parsed JSON dict, prefix_text) or None."""
+def extract_json_from_mp3(path: str) -> dict | None:
+    """Return parsed JSON dict or None."""
     try:
         tags = TinyTag.get(path, tags=True, image=False)
 
@@ -44,7 +39,7 @@ def extract_json_from_mp3(path: str) -> tuple[dict, str] | None:
         print(f"Error parsing JSON from file comment: {e}")
         return None
 
-    return comm_data, ""
+    return comm_data
 
 
 def write_json_to_mp3(path: str, json_data: dict | str) -> bool:

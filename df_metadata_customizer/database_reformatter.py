@@ -708,14 +708,7 @@ class DFApp(ctk.CTk):
         try:
             current_text = self.json_text.get("1.0", "end-1c").strip()
 
-            # Reconstruct original JSON with prefix
-            original_json = {}
-            if self.current_metadata.prefix:
-                original_json["_prefix"] = self.current_metadata.prefix
-            if self.current_metadata.raw_data:
-                original_json.update(self.current_metadata.raw_data)
-
-            original_text = json.dumps(original_json, indent=2, ensure_ascii=False)
+            original_text = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=False)
 
             # Enable button only if JSON has changed
             if current_text != original_text:
@@ -757,7 +750,7 @@ class DFApp(ctk.CTk):
                     self.after(0, lambda: on_data_loaded(success=False))
                     return
 
-                self.file_manager.get_file_data_with_prefix(p)
+                self.file_manager.get_file_data(p)
 
                 # Update progress every 10 files
                 if i % 10 == 0:
@@ -1380,7 +1373,7 @@ class DFApp(ctk.CTk):
         return tuple(values)
 
     # -------------------------
-    # JSON Editing Functions - UPDATED with prefix support
+    # JSON Editing Functions
     # -------------------------
     def save_json_to_file(self) -> None:
         """Save the edited JSON back to the current MP3 file."""
@@ -1397,7 +1390,7 @@ class DFApp(ctk.CTk):
 
         try:
             # Use FileManager to prepare JSON
-            full_comment, json_data, prefix_text = FileManager.prepare_json_for_save(json_text)
+            full_comment, json_data = FileManager.prepare_json_for_save(json_text)
 
         except json.JSONDecodeError as e:
             messagebox.showerror("Invalid JSON", f"The JSON is invalid:\n{e!s}")
@@ -1425,7 +1418,7 @@ class DFApp(ctk.CTk):
             success, filename = result
             if success:
                 # Update cache with new data
-                self.file_manager.update_file_data(path, json_data, prefix_text)
+                self.file_manager.update_file_data(path, json_data)
                 self.current_metadata = self.file_manager.get_metadata(path)
 
                 # Update the treeview with new data
@@ -1720,7 +1713,7 @@ class DFApp(ctk.CTk):
         # Clear cache when loading new folder
         self.file_manager.clear()
         self.cover_cache.clear()
-        mp3_utils.extract_json_from_mp3_cached.cache_clear()
+        mp3_utils.extract_json_from_mp3.cache_clear()
 
         # Show loading state immediately
         self.lbl_file_info.configure(text="Scanning folder...")
@@ -1858,25 +1851,18 @@ class DFApp(ctk.CTk):
         # Load metadata
         self.current_metadata = self.file_manager.get_metadata(path)
 
-        # show JSON with prefix as a wrapper - FIXED: Better encoding handling
+        # Show JSON
         self.json_text.delete("1.0", "end")
-        if self.current_metadata.raw_data or self.current_metadata.prefix:
-            # Create a wrapper JSON that includes both prefix and original data
-            wrapper_json = {}
-            if self.current_metadata.prefix:
-                wrapper_json["_prefix"] = self.current_metadata.prefix
-            if self.current_metadata.raw_data:
-                wrapper_json.update(self.current_metadata.raw_data)
-
+        if self.current_metadata.raw_data:
             try:
                 # FIXED: Ensure proper encoding for JSON dump
-                json_str = json.dumps(wrapper_json, indent=2, ensure_ascii=False)
+                json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=False)
                 self.json_text.insert("1.0", json_str)
             except Exception as e:
                 print(f"Error displaying JSON: {e}")
                 # Fallback: try with ASCII encoding
                 try:
-                    json_str = json.dumps(wrapper_json, indent=2, ensure_ascii=True)
+                    json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=True)
                     self.json_text.insert("1.0", json_str)
                 except Exception:
                     self.json_text.insert("1.0", "Error displaying JSON data")
