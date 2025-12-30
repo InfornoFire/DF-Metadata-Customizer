@@ -1,60 +1,43 @@
 """Utilities for reading/writing MP3 ID3 tags and embedded JSON metadata."""
 
+import contextlib
 import json
 import os
 import platform
-import re
 import shutil
 import subprocess
-from functools import lru_cache
 from io import BytesIO
 from tkinter import messagebox
 
 from mutagen.id3 import APIC, COMM, ID3, TALB, TDRC, TIT2, TPE1, TPOS, TRCK, ID3NoHeaderError
-from mutagen.mp3 import MP3
 from PIL import Image
-
-JSON_FIND_RE = re.compile(r"\{.*\}", re.DOTALL)
-
-
-@lru_cache(maxsize=1000)
-def extract_json_from_mp3_cached(path: str) -> tuple[dict, str] | None:
-    """Cache version of extract_json_from_mp3."""
-    return extract_json_from_mp3(path)
+from tinytag import TinyTag
 
 
-def extract_json_from_mp3(path: str) -> tuple[dict, str] | None:
-    """Return (parsed JSON dict, prefix_text) or None."""
+def extract_json_from_mp3(path: str) -> dict | None:
+    """Return parsed JSON dict or None."""
     try:
-        audio = MP3(path)
-        if not audio.tags:
-            return None
-        # Gather COMM frames
-        comms = [v for k, v in audio.tags.items() if k.startswith("COMM")]
-        for c in comms:
-            text = ""
-            try:
-                # COMM frame: .text may be list
-                text = "".join(c.text) if hasattr(c, "text") else str(c)
-            except Exception:
-                text = str(c)
-            m = JSON_FIND_RE.search(text)
-            if m:
-                raw_json = m.group(0)
-                # FIXED: Get the exact prefix without adding extra space
-                prefix_text = text[: m.start()].strip()
+        tags = TinyTag.get(path, tags=True, image=False)
 
-                try:
-                    json_data = json.loads(raw_json)
-                except Exception:
-                    try:
-                        json_data = json.loads(raw_json.replace("'", '"'))
-                    except Exception:
-                        continue
-                return json_data, prefix_text
-    except Exception:
+        # tag.comment and tag.other['comment'] may contain JSON texts
+        texts = tags.other.get("comment") or []  # All entries in other are lists
+        if tags.comment:
+            texts.append(tags.comment)
+
+        if not texts:
+            return None
+
+        # Combine jsons
+        comm_data = {}
+        for text in texts:
+            with contextlib.suppress(json.JSONDecodeError):
+                comm_data.update(json.loads(text))
+
+    except Exception as e:
+        print(f"Error parsing JSON from file comment: {e}")
         return None
-    return None
+
+    return comm_data
 
 
 def write_json_to_mp3(path: str, json_data: dict | str) -> bool:
@@ -91,21 +74,18 @@ def write_json_to_mp3(path: str, json_data: dict | str) -> bool:
     return True
 
 
-def read_cover_from_mp3(path: str) -> tuple[Image.Image | None, str | None]:
+def read_cover_from_mp3(path: str) -> Image.Image | None:
     """Return (PIL Image, mime) or (None, None)."""
     try:
-        tags = ID3(path)
-    except Exception:
-        return None, None
-    apics = tags.getall("APIC")
-    if not apics:
-        return None, None
-    ap = apics[0]
-    try:
-        img = Image.open(BytesIO(ap.data))
-    except Exception:
-        return None, None
-    return img, ap.mime
+        tags = TinyTag.get(path, tags=True, image=True)
+        img = tags.images.any
+        if img:
+            return Image.open(BytesIO(img.data))
+
+    except Exception as e:
+        print("Error reading cover image:", e)
+        return None
+    return None
 
 
 def write_id3_tags(

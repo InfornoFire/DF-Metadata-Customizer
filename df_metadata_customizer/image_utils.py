@@ -1,5 +1,8 @@
 """Image cache with optimized resizing for cover images."""
 
+import hashlib
+from collections import deque
+
 from PIL import Image
 
 
@@ -7,92 +10,91 @@ class OptimizedImageCache:
     """Optimized cache for cover images with pre-resized versions."""
 
     def __init__(self, max_size: int = 100) -> None:
+        """Initialize the image cache."""
         self.max_size = max_size
-        self._cache = {}
-        self._access_order = []
-        self._resized_cache = {}  # Cache for pre-resized images
+        self._hash_cache: dict[str, str] = {} # Filepath to image hash
+        self._image_cache: dict[str, Image.Image] = {} # Image hash to Image
+        self._access_order: deque[str] = deque() # LRU with image hashes
 
-    def get(self, key, size=None):
+    def get(self, key: str) -> Image.Image | None:
         """Get image from cache, optionally resized."""
-        if key not in self._cache:
+        image_hash = self._hash_cache.get(key)
+        if not image_hash or image_hash not in self._image_cache:
             return None
 
         # Update access order
-        if key in self._access_order:
-            self._access_order.remove(key)
-        self._access_order.append(key)
+        if image_hash in self._access_order:
+            self._access_order.remove(image_hash)
+        self._access_order.append(image_hash)
 
-        img = self._cache[key]
+        return self._image_cache.get(image_hash)
 
-        # Return pre-resized version if available and size matches
-        if size:
-            resize_key = f"{key}_{size[0]}_{size[1]}"
-            if resize_key in self._resized_cache:
-                return self._resized_cache[resize_key]
 
-            # Create and cache resized version
-            resized = self._resize_image_optimized(img, size)
-            self._resized_cache[resize_key] = resized
-            return resized
-
-        return img
-
-    def put(self, key, image):
+    def put(self, key: str, image: Image.Image | None, *, resize: bool=True) -> Image.Image | None:
         """Add image to cache with LRU eviction."""
-        if key in self._cache:
-            self._access_order.remove(key)
+        if resize:
+            image = OptimizedImageCache.optimize_image_for_display(image)
 
-        self._cache[key] = image
-        self._access_order.append(key)
+        if not image:
+            return None
 
-        # Evict least recently used if over size limit
-        while len(self._cache) > self.max_size:
-            oldest_key = self._access_order.pop(0)
-            # Also remove resized versions
-            for resize_key in list(self._resized_cache.keys()):
-                if resize_key.startswith(f"{oldest_key}_"):
-                    del self._resized_cache[resize_key]
-            del self._cache[oldest_key]
+        image_hash = hashlib.sha256(image.tobytes()).hexdigest()
 
-    def _resize_image_optimized(self, img, size):
-        """Optimized image resizing with quality/speed balance."""
-        if img.size == size:
-            return img
+        self._hash_cache[key] = image_hash
 
-        # Use faster resampling for better performance
-        return img.resize(size, Image.Resampling.NEAREST)
+        if image_hash not in self._image_cache:
+            self._image_cache[image_hash] = image
+
+        if image_hash in self._access_order:
+            self._access_order.remove(image_hash)
+
+        self._access_order.append(image_hash)
+
+        # Evict LRU if over size limit
+        while len(self._image_cache) > self.max_size:
+            oldest_key = self._access_order.popleft()
+            del self._image_cache[oldest_key]
+
+        return image
 
     def clear(self) -> None:
         """Clear the cache."""
-        self._cache.clear()
-        self._resized_cache.clear()
+        self._hash_cache.clear()
+        self._image_cache.clear()
         self._access_order.clear()
 
-def optimize_image_for_display(img: Image.Image | None) -> Image.Image | None:
-    """Optimize image for fast display - resize to fit within square container."""
-    if not img:
-        return None
+    def update_file_path(self, old_path: str, new_path: str) -> None:
+        """Update the file path in the cache (e.g., if a file is renamed)."""
+        if old_path in self._hash_cache:
+            image_hash = self._hash_cache.pop(old_path)
+            self._hash_cache[new_path] = image_hash
 
-    # Target square size
-    square_size = (170, 170)  # Can be edited to match your display size
+    @staticmethod
+    def optimize_image_for_display(img: Image.Image | None) -> Image.Image | None:
+        """Optimize image for fast display - resize to fit within square container."""
+        if not img:
+            return None
 
-    # Calculate the maximum size that fits within the square while maintaining aspect ratio
-    img_ratio = img.width / img.height
+        # Target square size
+        square_size = (170, 170)  # Can be edited to match your display size
 
-    if img_ratio >= 1:
-        # Landscape or square image - fit to width
-        new_width = square_size[0]
-        new_height = int(square_size[0] / img_ratio)
-    else:
-        # Portrait image - fit to height
-        new_height = square_size[1]
-        new_width = int(square_size[1] * img_ratio)
+        # Calculate the maximum size that fits within the square while maintaining aspect ratio
+        img_ratio = img.width / img.height
 
-    # Resize the image to fit within the square container
-    resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        if img_ratio >= 1:
+            # Landscape or square image - fit to width
+            new_width = square_size[0]
+            new_height = int(square_size[0] / img_ratio)
+        else:
+            # Portrait image - fit to height
+            new_height = square_size[1]
+            new_width = int(square_size[1] * img_ratio)
 
-    # Convert to RGB if necessary
-    if resized_img.mode != "RGB":
-        resized_img = resized_img.convert("RGB")
+        # Resize the image to fit within the square container
+        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-    return resized_img
+        # Convert to RGB if necessary
+        if resized_img.mode != "RGB":
+            resized_img = resized_img.convert("RGB")
+
+        return resized_img

@@ -2,7 +2,6 @@
 
 import contextlib
 import json
-import shutil
 import threading
 import time
 import tkinter as tk
@@ -13,7 +12,7 @@ from typing import TYPE_CHECKING, Final
 import customtkinter as ctk
 from PIL import Image
 
-from df_metadata_customizer import image_utils, mp3_utils
+from df_metadata_customizer import mp3_utils
 from df_metadata_customizer.dialogs import ProgressDialog, StatisticsDialog
 from df_metadata_customizer.file_manager import FileManager
 from df_metadata_customizer.image_utils import OptimizedImageCache
@@ -70,10 +69,8 @@ class DFApp(ctk.CTk):
         self.theme_icon_cache = {}  # Cache for theme icons
 
         # Cover image settings - OPTIMIZED
-        self.show_covers = True  # Covers are always ON
         self.cover_cache = OptimizedImageCache(max_size=50)  # Optimized cache
         self.current_cover_image = None  # Track current cover to prevent garbage collection
-        self.cover_loading_queue = []  # Queue for cover loading requests
         self.cover_loading_thread = None  # Dedicated thread for cover loading
         self.cover_loading_active = False  # Control flag for cover loading thread
         self.last_cover_request_time = 0  # Throttle cover loading
@@ -110,51 +107,21 @@ class DFApp(ctk.CTk):
         self.max_rules_per_tab = 50
 
         # Build UI
+        # self.withdraw()  # Hide the window during changes
         self._build_ui()
+
         # Load saved settings (if any)
         with contextlib.suppress(Exception):
             self.load_settings()
+
+        # self.after_idle(self.deiconify)  # Redisplay the window
+
         # default presets container
         self.presets = {}
-
-        # Start cover loading thread
-        self._start_cover_loading_thread()
 
         # Ensure settings are saved on exit
         with contextlib.suppress(Exception):
             self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _start_cover_loading_thread(self) -> None:
-        """Start the dedicated cover loading thread."""
-        self.cover_loading_active = True
-        self.cover_loading_thread = threading.Thread(target=self._cover_loading_worker, daemon=True)
-        self.cover_loading_thread.start()
-
-    def _cover_loading_worker(self) -> None:
-        """Worker thread for loading cover images."""
-        while self.cover_loading_active:
-            if self.cover_loading_queue:
-                path, callback = self.cover_loading_queue.pop(0)
-                try:
-                    # Load cover image
-                    img, _ = mp3_utils.read_cover_from_mp3(path)
-                    if img:
-                        # Pre-optimize the image for display
-                        optimized_img = image_utils.optimize_image_for_display(img)
-                        # Cache the optimized image
-                        self.cover_cache.put(path, optimized_img)
-                        # Call callback in main thread
-                        if callback:
-                            self.after(0, lambda: callback(optimized_img))
-                    elif callback:
-                        self.after(0, lambda: callback(None))
-                except Exception as e:
-                    print(f"Error loading cover in worker: {e}")
-                    if callback:
-                        self.after(0, lambda: callback(None))
-            else:
-                # FIXED: Longer sleep to reduce CPU usage
-                time.sleep(0.05)  # Increased from 0.01 to 0.05
 
     def force_preview_update(self) -> None:
         """Force immediate preview update, bypassing any cover loading delays."""
@@ -708,14 +675,7 @@ class DFApp(ctk.CTk):
         try:
             current_text = self.json_text.get("1.0", "end-1c").strip()
 
-            # Reconstruct original JSON with prefix
-            original_json = {}
-            if self.current_metadata.prefix:
-                original_json["_prefix"] = self.current_metadata.prefix
-            if self.current_metadata.raw_data:
-                original_json.update(self.current_metadata.raw_data)
-
-            original_text = json.dumps(original_json, indent=2, ensure_ascii=False)
+            original_text = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=False)
 
             # Enable button only if JSON has changed
             if current_text != original_text:
@@ -754,17 +714,17 @@ class DFApp(ctk.CTk):
             for i, p in enumerate(self.mp3_files):
                 # Check for cancellation
                 if self.progress_dialog and self.progress_dialog.cancelled:
-                    self.after(0, lambda: on_data_loaded(success=False))
+                    self.after_idle(lambda: on_data_loaded(success=False))
                     return
 
-                self.file_manager.get_file_data_with_prefix(p)
+                self.file_manager.get_file_data(p)
 
                 # Update progress every 10 files
                 if i % 10 == 0:
-                    self.after(0, lambda idx=i: update_loading_progress(idx, total))
+                    self.after_idle(lambda idx=i: update_loading_progress(idx, total))
 
             # Done
-            self.after(0, lambda: on_data_loaded(success=True))
+            self.after_idle(lambda: on_data_loaded(success=True))
 
         def on_data_loaded(*, success: bool) -> None:
             if not success or (self.progress_dialog and self.progress_dialog.cancelled):
@@ -936,10 +896,8 @@ class DFApp(ctk.CTk):
         except Exception as e:
             print(f"Error updating theme button: {e}")
 
-    # -------------------------
-    # OPTIMIZED: Cover image handling with dedicated thread
-    # -------------------------
-    def _safe_cover_display_update(self, text: str, clear_image: bool = False) -> None:
+    # Cover Image Functions
+    def _safe_cover_display_update(self, text: str, *, clear_image: bool = False) -> None:
         """Safely update cover display without causing Tcl errors."""
         try:
             if clear_image:
@@ -958,15 +916,15 @@ class DFApp(ctk.CTk):
                     self.cover_display.configure(text=text)
 
     def load_current_cover(self) -> None:
-        """Load cover image for current song - FIXED: More aggressive throttling."""
+        """Load cover image for current song."""
         if self.current_index is None or not self.mp3_files:
             return
 
         path = self.mp3_files[self.current_index]
 
-        # FIXED: More aggressive throttling to prevent UI blocking
+        # Prevent UI blocking
         current_time = time.time()
-        if current_time - self.last_cover_request_time < 0.3:  # Increased from 100ms to 300ms
+        if current_time - self.last_cover_request_time < 0.3:
             return
         self.last_cover_request_time = current_time
 
@@ -979,18 +937,22 @@ class DFApp(ctk.CTk):
         # Show loading message
         self._safe_cover_display_update("Loading cover...")
 
-        # FIXED: Clear previous cover requests to prevent queue buildup
-        self.cover_loading_queue.clear()
+        # Load art when free
+        self.after_idle(self.load_cover_art, path)
 
-        # Add to loading queue for background processing
-        self.cover_loading_queue.append((path, self._on_cover_loaded))
+    def load_cover_art(self, path: str) -> None:
+        """Request loading of cover art for the given file path."""
+        try:
+            img = mp3_utils.read_cover_from_mp3(path)
+            if img:
+                img = self.cover_cache.put(path, img)  # Cache the optimized image
+                self.display_cover_image(img)
+            else:
+                self._safe_cover_display_update("No cover", clear_image=True)
 
-    def _on_cover_loaded(self, img: Image.Image | None) -> None:
-        """When cover is loaded in background."""
-        if img:
-            self.display_cover_image(img)
-        else:
-            self._safe_cover_display_update("No cover", clear_image=True)
+        except Exception as e:
+            print(f"Error loading cover: {e}")
+            self._safe_cover_display_update("No cover (error)", clear_image=True)
 
     def display_cover_image(self, img: Image.Image | None) -> None:
         """Display cover image centered in the square container."""
@@ -1015,16 +977,21 @@ class DFApp(ctk.CTk):
             print(f"Error displaying cover: {e}")
             self._safe_cover_display_update("Error loading cover", clear_image=True)
 
-    def toggle_theme(self) -> None:
+    def toggle_theme(self, theme: str | None = None) -> None:
         """Toggle between dark and light themes."""
         try:
-            if self.current_theme == "System":
+            if theme is not None:
+                self.current_theme = theme
+            elif self.current_theme == "System":
                 # If system, switch to explicit dark
                 self.current_theme = "Dark"
             elif self.current_theme == "Dark":
                 self.current_theme = "Light"
             else:
                 self.current_theme = "Dark"
+
+            # Hide the window during changes
+            # self.withdraw()
 
             # Apply the theme
             ctk.set_appearance_mode(self.current_theme)
@@ -1035,21 +1002,22 @@ class DFApp(ctk.CTk):
             self._update_output_preview_style()
             self._update_theme_button()
 
-            # Refresh the tree to apply new styles - with delay to prevent freezing
+            # Refresh the tree to apply new styles
             if self.tree.get_children():
-                self.after(100, self.refresh_tree)
+                self.after(0, self.refresh_tree)
 
             # Always load cover after theme change
             self._safe_cover_display_update("Loading cover...")
-            print("Testing")
             if self.current_index is not None:
-                print("Testing2")
                 self.load_current_cover()
             else:
-                print("Testing3")
                 self._safe_cover_display_update("No cover", clear_image=True)
+
         except Exception as e:
             print(f"Error toggling theme: {e}")
+
+        # Redisplay the window
+        # self.after_idle(self.deiconify)
 
     # -------------------------
     # UPDATED: Search with version=latest support
@@ -1058,7 +1026,7 @@ class DFApp(ctk.CTk):
         """Debounced search handler."""
         if hasattr(self, "_search_after_id"):
             self.after_cancel(self._search_after_id)
-        self._search_after_id = self.after(300, self.refresh_tree)  # 300ms delay
+        self._search_after_id = self.after_idle(self.refresh_tree)
 
     def on_tree_click(self, event: tk.Event) -> None:
         """Handle column header clicks for reordering."""
@@ -1248,7 +1216,6 @@ class DFApp(ctk.CTk):
                 data["sort_rules"] = []
 
             # other UI prefs
-            data["show_covers"] = bool(self.show_covers)
             data["theme"] = str(self.current_theme)
 
             # write file
@@ -1263,43 +1230,26 @@ class DFApp(ctk.CTk):
             return
 
         # theme
-        try:
+        with contextlib.suppress(Exception):
             th = data.get("theme")
             if th:
                 self.current_theme = th
-                ctk.set_appearance_mode(self.current_theme)
-                self._update_theme_button()
-                self._update_treeview_style()
-                self._update_json_text_style()
-                self._update_output_preview_style()
-        except Exception:
-            pass
+                self.toggle_theme(theme=th)
 
-        # show covers - REMOVED: No longer toggleable, always True
-        self.show_covers = True
-
-        # column order & widths
-        try:
+            # column order & widths
             col_order = data.get("column_order")
             col_widths = data.get("column_widths", {})
             if col_order and isinstance(col_order, list):
                 # apply order
                 DFApp.COLUMN_ORDER = col_order
                 # rebuild columns to new order
-                with contextlib.suppress(Exception):
-                    self.rebuild_tree_columns()
+                self.rebuild_tree_columns()
                 # apply widths
-                try:
-                    for c, w in (col_widths or {}).items():
-                        with contextlib.suppress(Exception):
-                            self.tree.column(c, width=int(w))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                for c, w in (col_widths or {}).items():
+                    with contextlib.suppress(Exception):
+                        self.tree.column(c, width=int(w))
 
-        # sort rules
-        try:
+            # sort rules
             sort_rules = data.get("sort_rules") or []
             if isinstance(sort_rules, list) and sort_rules:
                 # ensure at least one rule exists
@@ -1307,29 +1257,21 @@ class DFApp(ctk.CTk):
                 # there is always at least one sort rule created in UI
                 # set values for existing rules and add extras if needed
                 for i, r in enumerate(sort_rules):
-                    if i < len(self.sort_rules):
-                        try:
+                    with contextlib.suppress(Exception):
+                        if i < len(self.sort_rules):
                             self.sort_rules[i].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
                             self.sort_rules[i].order_var.set(r.get("order", "asc"))
-                        except Exception:
-                            pass
-                    else:
-                        try:
+                        else:
                             self.add_sort_rule(is_first=False)
                             self.sort_rules[-1].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
                             self.sort_rules[-1].order_var.set(r.get("order", "asc"))
-                        except Exception:
-                            pass
-        except Exception:
-            pass
 
-        # sash ratio - apply after window is laid out
-        try:
+            # sash ratio - apply after window is laid out
             sash_ratio = data.get("sash_ratio")
             if sash_ratio is not None:
 
                 def apply_ratio(attempts: int = 0) -> None:
-                    try:
+                    with contextlib.suppress(Exception):
                         total = self.paned.winfo_width()
                         if total and attempts < 10:
                             pos = int(total * float(sash_ratio))
@@ -1341,28 +1283,13 @@ class DFApp(ctk.CTk):
                         # try again shortly if not yet sized
                         elif attempts < 10:
                             self.after(150, lambda: apply_ratio(attempts + 1))
-                    except Exception:
-                        pass
 
                 self.after(200, lambda: apply_ratio(0))
-        except Exception:
-            pass
-
-        # Always load cover if available
-        try:
-            if self.current_index is not None:
-                self.load_current_cover()
-            else:
-                self._safe_cover_display_update("No cover", clear_image=True)
-        except Exception:
-            pass
 
     def _on_close(self) -> None:
-        try:
-            self.cover_loading_active = False  # Stop the cover loading thread
+        with contextlib.suppress(Exception):
             self.save_settings()
-        except Exception:
-            pass
+
         try:
             self.destroy()
         except Exception:
@@ -1383,7 +1310,7 @@ class DFApp(ctk.CTk):
         return tuple(values)
 
     # -------------------------
-    # JSON Editing Functions - UPDATED with prefix support
+    # JSON Editing Functions
     # -------------------------
     def save_json_to_file(self) -> None:
         """Save the edited JSON back to the current MP3 file."""
@@ -1400,7 +1327,7 @@ class DFApp(ctk.CTk):
 
         try:
             # Use FileManager to prepare JSON
-            full_comment, json_data, prefix_text = FileManager.prepare_json_for_save(json_text)
+            full_comment, json_data = FileManager.prepare_json_for_save(json_text)
 
         except json.JSONDecodeError as e:
             messagebox.showerror("Invalid JSON", f"The JSON is invalid:\n{e!s}")
@@ -1419,16 +1346,10 @@ class DFApp(ctk.CTk):
         self.lbl_file_info.configure(text=f"Saving JSON to {filename}...")
         self.update_idletasks()
 
-        def save_json() -> tuple[bool, str]:
-            # Write the full comment text directly
-            success = mp3_utils.write_json_to_mp3(path, full_comment)
-            return success, filename
-
-        def on_save_complete(result: tuple[bool, str]) -> None:
-            success, filename = result
+        def on_save_complete(filename: str, *, success: bool) -> None:
             if success:
                 # Update cache with new data
-                self.file_manager.update_file_data(path, json_data, prefix_text)
+                self.file_manager.update_file_data(path, json_data)
                 self.current_metadata = self.file_manager.get_metadata(path)
 
                 # Update the treeview with new data
@@ -1446,7 +1367,9 @@ class DFApp(ctk.CTk):
                 self.lbl_file_info.configure(text=f"Failed to save JSON to {filename}")
                 messagebox.showerror("Error", f"Failed to save JSON to {filename}")
 
-        threading.Thread(target=lambda: self.after(0, lambda: on_save_complete(save_json())), daemon=True).start()
+        # Save JSON
+        saved = mp3_utils.write_json_to_mp3(path, full_comment)
+        self.after(0, lambda: on_save_complete(filename, success=saved))
 
     def update_tree_row(self, index: int, json_data: dict[str, str]) -> None:
         """Update a specific row in the treeview with new JSON data."""
@@ -1534,26 +1457,14 @@ class DFApp(ctk.CTk):
         self.lbl_file_info.configure(text=f"Renaming {current_filename}...")
         self.update_idletasks()
 
-        # Rename in background thread
-        def rename_file() -> tuple[bool, str, str]:
-            try:
-                # Use shutil.move to handle cross-device moves if needed
-                shutil.move(current_path, new_path)
-            except Exception as e:
-                return False, current_filename, str(e)
-            return True, current_filename, new_filename
-
-        def on_rename_complete(result: tuple[bool, str, str]) -> None:
-            success, old_name, new_name_or_error = result
+        def on_rename_complete(old_name: str, new_name_or_error: str, *, success: bool) -> None:
             if success:
                 # Update the file path in our list
                 self.mp3_files[self.current_index] = new_path
 
                 # Update cache entries
                 self.file_manager.update_file_path(current_path, new_path)
-
-                if current_path in self.cover_cache:
-                    self.cover_cache[new_path] = self.cover_cache.pop(current_path)
+                self.cover_cache.update_file_path(current_path, new_path)
 
                 # Update treeview
                 if self.current_metadata:
@@ -1569,7 +1480,13 @@ class DFApp(ctk.CTk):
                 self.lbl_file_info.configure(text=f"Failed to rename {old_name}")
                 messagebox.showerror("Error", f"Failed to rename file:\n{new_name_or_error}")
 
-        threading.Thread(target=lambda: self.after(0, lambda: on_rename_complete(rename_file())), daemon=True).start()
+        error_message = ""
+        try:
+            renamed = Path(current_path).rename(new_path)
+        except Exception as e:
+            error_message = str(e)
+
+        self.after_idle(lambda: on_rename_complete(current_filename, error_message or new_filename, success=renamed))
 
     def move_rule(self, widget: RuleRow, direction: int) -> None:
         """Move a rule up or down."""
@@ -1616,7 +1533,7 @@ class DFApp(ctk.CTk):
         widget.destroy()
 
         # Update button states for remaining rules
-        self.after(10, lambda: self.update_rule_button_states(container))
+        self.after(0, lambda: self.update_rule_button_states(container))
 
         # Update button states after deletion (rules are now below limit)
         self.update_rule_tab_buttons()
@@ -1723,7 +1640,6 @@ class DFApp(ctk.CTk):
         # Clear cache when loading new folder
         self.file_manager.clear()
         self.cover_cache.clear()
-        mp3_utils.extract_json_from_mp3_cached.cache_clear()
 
         # Show loading state immediately
         self.lbl_file_info.configure(text="Scanning folder...")
@@ -1747,7 +1663,7 @@ class DFApp(ctk.CTk):
                 for p in Path(folder).glob("**/*.mp3"):
                     # Check for cancellation
                     if self.progress_dialog and self.progress_dialog.cancelled:
-                        self.after(0, lambda: on_scan_complete(None))
+                        self.after_idle(lambda: on_scan_complete(None))
                         return
 
                     if p.is_file() and p.suffix.lower() == ".mp3":
@@ -1755,12 +1671,12 @@ class DFApp(ctk.CTk):
                         count += 1
                         # Update progress every 10 files
                         if count % 10 == 0:
-                            self.after(0, lambda c=count: update_scan_progress(c))
+                            self.after_idle(lambda c=count: update_scan_progress(c))
 
-                self.after(0, lambda: on_scan_complete(files))
+                self.after_idle(lambda: on_scan_complete(files))
             except Exception as e:
                 print(f"Error scanning folder: {e}")
-                self.after(0, lambda: on_scan_complete([]))
+                self.after_idle(lambda: on_scan_complete([]))
 
         def on_scan_complete(files: list[str] | None) -> None:
             if files is None:  # Cancelled
@@ -1861,25 +1777,18 @@ class DFApp(ctk.CTk):
         # Load metadata
         self.current_metadata = self.file_manager.get_metadata(path)
 
-        # show JSON with prefix as a wrapper - FIXED: Better encoding handling
+        # Show JSON
         self.json_text.delete("1.0", "end")
-        if self.current_metadata.raw_data or self.current_metadata.prefix:
-            # Create a wrapper JSON that includes both prefix and original data
-            wrapper_json = {}
-            if self.current_metadata.prefix:
-                wrapper_json["_prefix"] = self.current_metadata.prefix
-            if self.current_metadata.raw_data:
-                wrapper_json.update(self.current_metadata.raw_data)
-
+        if self.current_metadata.raw_data:
             try:
                 # FIXED: Ensure proper encoding for JSON dump
-                json_str = json.dumps(wrapper_json, indent=2, ensure_ascii=False)
+                json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=False)
                 self.json_text.insert("1.0", json_str)
             except Exception as e:
                 print(f"Error displaying JSON: {e}")
                 # Fallback: try with ASCII encoding
                 try:
-                    json_str = json.dumps(wrapper_json, indent=2, ensure_ascii=True)
+                    json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=True)
                     self.json_text.insert("1.0", json_str)
                 except Exception:
                     self.json_text.insert("1.0", "Error displaying JSON data")
@@ -2144,9 +2053,8 @@ class DFApp(ctk.CTk):
                 except Exception as e:
                     errors.append(f"Error with {Path(p).name}: {e!s}")
 
-                # Update progress - FORCE UPDATE
-                self.after(
-                    0,
+                # Update progress
+                self.after_idle(
                     lambda idx=i, path=p: update_apply_progress(
                         idx + 1,
                         total,
@@ -2155,7 +2063,7 @@ class DFApp(ctk.CTk):
                 )
 
             # Done
-            self.after(0, lambda: on_apply_complete((success_count, errors)))
+            self.after_idle(lambda: on_apply_complete((success_count, errors)))
 
         def on_apply_complete(result: tuple[int, list[str]]) -> None:
             """Handle completion of apply operation."""
@@ -2331,7 +2239,7 @@ class DFApp(ctk.CTk):
             self.update_preview()
 
             # Reset to original text after a delay
-            self.after(2000, lambda: self.lbl_file_info.configure(text=original_text))
+            self.after_idle(lambda: self.lbl_file_info.configure(text=original_text))
 
         except Exception as e:
             self.lbl_file_info.configure(text=original_text)
