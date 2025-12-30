@@ -6,7 +6,6 @@ import os
 import platform
 import shutil
 import subprocess
-from functools import lru_cache
 from io import BytesIO
 from tkinter import messagebox
 
@@ -15,7 +14,6 @@ from PIL import Image
 from tinytag import TinyTag
 
 
-@lru_cache(maxsize=1000)
 def extract_json_from_mp3(path: str) -> dict | None:
     """Return parsed JSON dict or None."""
     try:

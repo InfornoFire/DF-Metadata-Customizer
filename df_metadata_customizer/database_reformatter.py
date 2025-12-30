@@ -133,24 +133,18 @@ class DFApp(ctk.CTk):
         """Worker thread for loading cover images."""
         while self.cover_loading_active:
             if self.cover_loading_queue:
-                path, callback = self.cover_loading_queue.pop(0)
+                path = self.cover_loading_queue.pop(0)
                 try:
                     # Load cover image
                     img = mp3_utils.read_cover_from_mp3(path)
                     if img:
-                        # Pre-optimize the image for display
-                        optimized_img = image_utils.optimize_image_for_display(img)
-                        # Cache the optimized image
-                        self.cover_cache.put(path, optimized_img)
-                        # Call callback in main thread
-                        if callback:
-                            self.after(0, lambda: callback(optimized_img))
-                    elif callback:
-                        self.after(0, lambda: callback(None))
+                        img = self.cover_cache.put(path, img) # Cache the optimized image
+                        self.after(0, lambda img=img: self._on_cover_loaded(img))
+                    else:
+                        self.after(0, lambda: self._on_cover_loaded(None))
                 except Exception as e:
                     print(f"Error loading cover in worker: {e}")
-                    if callback:
-                        self.after(0, lambda: callback(None))
+                    self.after(0, lambda: self._on_cover_loaded(None))
             else:
                 # FIXED: Longer sleep to reduce CPU usage
                 time.sleep(0.05)  # Increased from 0.01 to 0.05
@@ -950,15 +944,15 @@ class DFApp(ctk.CTk):
                     self.cover_display.configure(text=text)
 
     def load_current_cover(self) -> None:
-        """Load cover image for current song - FIXED: More aggressive throttling."""
+        """Load cover image for current song."""
         if self.current_index is None or not self.mp3_files:
             return
 
         path = self.mp3_files[self.current_index]
 
-        # FIXED: More aggressive throttling to prevent UI blocking
+        # Prevent UI blocking
         current_time = time.time()
-        if current_time - self.last_cover_request_time < 0.3:  # Increased from 100ms to 300ms
+        if current_time - self.last_cover_request_time < 0.3:
             return
         self.last_cover_request_time = current_time
 
@@ -975,7 +969,7 @@ class DFApp(ctk.CTk):
         self.cover_loading_queue.clear()
 
         # Add to loading queue for background processing
-        self.cover_loading_queue.append((path, self._on_cover_loaded))
+        self.cover_loading_queue.append(path)
 
     def _on_cover_loaded(self, img: Image.Image | None) -> None:
         """When cover is loaded in background."""
@@ -1510,9 +1504,7 @@ class DFApp(ctk.CTk):
 
                 # Update cache entries
                 self.file_manager.update_file_path(current_path, new_path)
-
-                if current_path in self.cover_cache:
-                    self.cover_cache[new_path] = self.cover_cache.pop(current_path)
+                self.cover_cache.update_file_path(current_path, new_path)
 
                 # Update treeview
                 if self.current_metadata:
@@ -1682,7 +1674,6 @@ class DFApp(ctk.CTk):
         # Clear cache when loading new folder
         self.file_manager.clear()
         self.cover_cache.clear()
-        mp3_utils.extract_json_from_mp3.cache_clear()
 
         # Show loading state immediately
         self.lbl_file_info.configure(text="Scanning folder...")
