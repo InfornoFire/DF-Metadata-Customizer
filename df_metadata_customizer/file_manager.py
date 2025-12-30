@@ -28,12 +28,11 @@ class FileManager:
             MetadataFields.DATE: pl.Utf8,
             MetadataFields.COMMENT: pl.Utf8,
             MetadataFields.SPECIAL: pl.Utf8,
-            "_prefix": pl.Utf8,
             "raw_json": pl.Object,
         }
         self.df = pl.DataFrame(schema=self.schema)
         # Staging area for new/modified data before commit to DF
-        self._staging: dict[str, tuple[dict, str]] = {}
+        self._staging: dict[str, dict] = {}
 
     def commit(self) -> None:
         """Commit staged changes to the DataFrame."""
@@ -42,7 +41,7 @@ class FileManager:
 
         # Convert staging to rows
         rows = []
-        for path, (jsond, prefix) in self._staging.items():
+        for path, jsond in self._staging.items():
             title = jsond.get(MetadataFields.TITLE, "")
             artist = jsond.get(MetadataFields.ARTIST, "")
             cover_artist = jsond.get(MetadataFields.COVER_ARTIST, "")
@@ -70,7 +69,6 @@ class FileManager:
                     MetadataFields.DATE: jsond.get(MetadataFields.DATE, ""),
                     MetadataFields.COMMENT: jsond.get(MetadataFields.COMMENT, ""),
                     MetadataFields.SPECIAL: jsond.get(MetadataFields.SPECIAL, ""),
-                    "_prefix": prefix,
                     "raw_json": jsond,
                 },
             )
@@ -109,14 +107,14 @@ class FileManager:
         """Check if a given version is the latest for a song ID."""
         return version == self.get_latest_version(song_id)
 
-    def update_file_data(self, file_path: str, json_data: dict, prefix_text: str) -> None:
+    def update_file_data(self, file_path: str, json_data: dict) -> None:
         """Update the file data cache (stages change)."""
-        self._staging[file_path] = (json_data, prefix_text)
+        self._staging[file_path] = json_data
 
     def update_file_path(self, old_path: str, new_path: str) -> None:
         """Update the file path in the cache (e.g., if a file is renamed)."""
         # Get data first
-        data = self.get_file_data_with_prefix(old_path)
+        data = self.get_file_data(old_path)
 
         # Remove old from staging if present
         if old_path in self._staging:
@@ -134,8 +132,8 @@ class FileManager:
         self.df = self.df.clear()
         self._staging.clear()
 
-    def get_file_data_with_prefix(self, file_path: str) -> tuple[dict, str]:
-        """Get both JSON data and prefix text."""
+    def get_file_data(self, file_path: str) -> dict:
+        """Get JSON data from a file."""
         # Check staging first
         if file_path in self._staging:
             return self._staging[file_path]
@@ -146,10 +144,10 @@ class FileManager:
             res = self.df.filter(pl.col("path") == file_path)
             if not res.is_empty():
                 row = res.row(0, named=True)
-                return row["raw_json"], row["_prefix"]
+                return row["raw_json"]
 
         # Not found, load from disk
-        jsond, prefix = mp3_utils.extract_json_from_mp3_cached(file_path) or ({}, "")
+        jsond = mp3_utils.extract_json_from_mp3(file_path) or {}
 
         if jsond:
             cleaned_jsond = {}
@@ -167,17 +165,12 @@ class FileManager:
             jsond = cleaned_jsond
 
         # Stage the loaded data
-        self._staging[file_path] = (jsond, prefix)
-        return jsond, prefix
-
-    def get_file_data(self, file_path: str) -> dict:
-        """Get cached file data with fallback (backward compatibility)."""
-        jsond, _ = self.get_file_data_with_prefix(file_path)
+        self._staging[file_path] = jsond
         return jsond
 
     def get_metadata(self, file_path: str) -> SongMetadata:
         """Get SongMetadata object for a file."""
-        jsond, prefix = self.get_file_data_with_prefix(file_path)
+        jsond = self.get_file_data(file_path)
 
         # Calculate is_latest
         title = jsond.get(MetadataFields.TITLE, "") or Path(file_path).stem
@@ -194,7 +187,7 @@ class FileManager:
 
         is_latest = self.is_latest_version(song_id, version)
 
-        return SongMetadata(jsond, file_path, prefix, is_latest=is_latest)
+        return SongMetadata(jsond, file_path, is_latest=is_latest)
 
     def get_view_data(self, paths: list[str]) -> pl.DataFrame:
         """Get data for specific paths in order, formatted for treeview."""
@@ -304,26 +297,11 @@ class FileManager:
         return stats
 
     @staticmethod
-    def prepare_json_for_save(json_text: str) -> tuple[str, dict, str]:
+    def prepare_json_for_save(json_text: str) -> tuple[str, dict]:
         """Parse JSON text and prepare it for saving to MP3."""
         # Parse the JSON to validate it
-        edited_data = json.loads(json_text)
+        json_data = json.loads(json_text)
 
-        # Check if this is our wrapper format with _prefix
-        prefix_text = ""
-        json_data = edited_data
+        full_comment = json.dumps(json_data, ensure_ascii=False, separators=(",", ":"))
 
-        if "_prefix" in edited_data:
-            prefix_text = edited_data["_prefix"]
-            # Create a copy without the _prefix field for the actual JSON data
-            json_data = {k: v for k, v in edited_data.items() if k != "_prefix"}
-
-        if prefix_text:
-            # Remove any trailing space from prefix and concatenate directly
-            prefix_clean = prefix_text.rstrip()
-            full_comment = f"{prefix_clean}{json.dumps(json_data, ensure_ascii=False, separators=(',', ':'))}"
-        else:
-            # If no prefix, just use the JSON with compact formatting
-            full_comment = json.dumps(json_data, ensure_ascii=False, separators=(",", ":"))
-
-        return full_comment, json_data, prefix_text
+        return full_comment, json_data
