@@ -2,7 +2,6 @@
 
 import contextlib
 import json
-import platform
 import threading
 import time
 import tkinter as tk
@@ -14,12 +13,21 @@ import customtkinter as ctk
 from PIL import Image
 
 from df_metadata_customizer import mp3_utils
-from df_metadata_customizer.dialogs import ConfirmDialog, ProgressDialog, StatisticsDialog
+from df_metadata_customizer.dialogs import ConfirmDialog, ProgressDialog
 from df_metadata_customizer.file_manager import FileManager
-from df_metadata_customizer.image_utils import OptimizedImageCache
+from df_metadata_customizer.image_utils import LRUImageCache
 from df_metadata_customizer.rule_manager import RuleManager
 from df_metadata_customizer.settings_manager import SettingsManager
 from df_metadata_customizer.song_metadata import MetadataFields
+from df_metadata_customizer.ui_components import (
+    FilenameComponent,
+    JSONEditComponent,
+    NavigationComponent,
+    OutputPreviewComponent,
+    PresetComponent,
+    RuleTabsComponent,
+    StatisticsComponent,
+)
 from df_metadata_customizer.widgets import RuleRow, SortRuleRow
 
 if TYPE_CHECKING:
@@ -45,6 +53,17 @@ class DFApp(ctk.CTk):
         MetadataFields.UI_FILE,
     ]
 
+    RULE_OPS: Final = [
+        "is",
+        "contains",
+        "starts with",
+        "ends with",
+        "is empty",
+        "is not empty",
+        "is latest version",
+        "is not latest version",
+    ]
+
     def __init__(self) -> None:
         """Initialize the main application window."""
         super().__init__()
@@ -52,7 +71,7 @@ class DFApp(ctk.CTk):
         self.geometry("1350x820")
         self.minsize(1100, 700)
 
-        self.settings_manager = SettingsManager()
+        SettingsManager.initialize()
         self.file_manager = FileManager()
 
         # Data model
@@ -72,52 +91,20 @@ class DFApp(ctk.CTk):
         self.theme_icon_cache = {}  # Cache for theme icons
 
         # Cover image settings - OPTIMIZED
-        self.cover_cache = OptimizedImageCache(max_size=50)  # Optimized cache
-        self.current_cover_image = None  # Track current cover to prevent garbage collection
-        self.cover_loading_thread = None  # Dedicated thread for cover loading
-        self.cover_loading_active = False  # Control flag for cover loading thread
-        self.last_cover_request_time = 0  # Throttle cover loading
+        self.cover_cache = LRUImageCache(max_size=50)  # Optimized cache
+        self.last_cover_request_time = 0.0  # Track last cover request time for throttling
 
-        # Statistics
-        self.stats = {
-            "all_songs": 0,
-            "unique_ta": 0,
-            "unique_tac": 0,
-            "neuro_solos_unique": 0,
-            "neuro_solos_total": 0,
-            "evil_solos_unique": 0,
-            "evil_solos_total": 0,
-            "duets_unique": 0,
-            "duets_total": 0,
-            "other_unique": 0,
-            "other_total": 0,
-        }
-
-        # Default fields/operators
-        self.rule_ops = [
-            "is",
-            "contains",
-            "starts with",
-            "ends with",
-            "is empty",
-            "is not empty",
-            "is latest version",
-            "is not latest version",
-        ]
 
         # Maximum number of allowed sort rules (including the primary rule)
         self.max_sort_rules = 5
         self.max_rules_per_tab = 50
 
         # Build UI
-        # self.withdraw()  # Hide the window during changes
         self._build_ui()
 
         # Load saved settings (if any)
         with contextlib.suppress(Exception):
             self.load_settings()
-
-        # self.after_idle(self.deiconify)  # Redisplay the window
 
         # default presets container
         self.presets = {}
@@ -125,11 +112,6 @@ class DFApp(ctk.CTk):
         # Ensure settings are saved on exit
         with contextlib.suppress(Exception):
             self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def force_preview_update(self) -> None:
-        """Force immediate preview update, bypassing any cover loading delays."""
-        if self.current_metadata:
-            self.update_preview()
 
     def _build_ui(self) -> None:
         # Use a PanedWindow for draggable splitter
@@ -182,7 +164,7 @@ class DFApp(ctk.CTk):
         self.sort_container.grid_columnconfigure(1, weight=1)
 
         # Add first sort rule (cannot be deleted)
-        self.sort_rules = []
+        self.sort_rules: list[SortRuleRow] = []
         self.add_sort_rule(is_first=True)
 
         # Add sort rule button
@@ -250,22 +232,8 @@ class DFApp(ctk.CTk):
         self.tree_scroll_h.grid(row=1, column=0, sticky="ew")
 
         # Status panel - NEW: Simple button that shows popup
-        status_btn_frame = ctk.CTkFrame(self.left_frame, fg_color="transparent")
-        status_btn_frame.grid(row=3, column=0, sticky="ew", padx=8, pady=(4, 4))
-        status_btn_frame.grid_columnconfigure(0, weight=1)
-
-        self.status_btn = ctk.CTkButton(
-            status_btn_frame,
-            text="📊 Show Statistics 📊",
-            command=self.show_statistics_popup,
-            fg_color="#444",
-            hover_color="#555",
-            height=28,
-        )
-        self.status_btn.grid(row=0, column=0, sticky="w")
-
-        self.status_label = ctk.CTkLabel(status_btn_frame, text="All songs: 0 | Unique (T,A): 0", anchor="w")
-        self.status_label.grid(row=0, column=1, sticky="e")
+        self.statistics_component = StatisticsComponent(self.left_frame, self, fg_color="transparent")
+        self.statistics_component.grid(row=3, column=0, sticky="ew", padx=8, pady=(4, 4))
 
         # Bottom status row (file info + selection info)
         status_frame = ctk.CTkFrame(self.left_frame, fg_color="transparent")
@@ -286,250 +254,34 @@ class DFApp(ctk.CTk):
         self.right_frame.grid_rowconfigure(1, weight=1)  # tab area expands
         self.right_frame.grid_rowconfigure(2, weight=2)  # preview area expands
 
-        # Preset controls with theme toggle
-        preset_row = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        preset_row.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 6))
-        preset_row.grid_columnconfigure(1, weight=1)
+        # Preset controls
+        self.preset_component = PresetComponent(self.right_frame, self)
+        self.preset_component.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 6))
 
-        ctk.CTkLabel(preset_row, text="Presets:").grid(row=0, column=0, padx=(4, 8), sticky="w")
-        self.preset_var = tk.StringVar()
-        self.preset_combo = ttk.Combobox(preset_row, textvariable=self.preset_var, state="readonly", width=20)
-        self.preset_combo.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        self.preset_combo.bind("<<ComboboxSelected>>", self.on_preset_selected)
+        # Rule Tabs
+        self.rule_tabs_component = RuleTabsComponent(self.right_frame, self)
+        self.rule_tabs_component.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 6))
 
-        ctk.CTkButton(preset_row, text="Save Preset", command=self.save_preset, width=80).grid(row=0, column=2, padx=4)
-        ctk.CTkButton(preset_row, text="Delete", command=self.delete_preset, width=60).grid(row=0, column=3, padx=4)
+        # Preview Area (JSON & Cover)
+        self.json_edit_component = JSONEditComponent(self.right_frame, self)
+        self.json_edit_component.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
 
-        # Theme toggle button - FIXED: Better contrast for moon icon
-        self.theme_btn = ctk.CTkButton(
-            preset_row,
-            text="",
-            width=40,
-            height=30,
-            command=self.toggle_theme,
-            fg_color="transparent",
-            hover_color=("gray70", "gray30"),
-        )
-        self.theme_btn.grid(row=0, column=4, padx=(8, 0))
-        self._update_theme_button()
+        # Output Preview
+        self.output_preview_component = OutputPreviewComponent(self.right_frame, self)
+        self.output_preview_component.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
 
-        # Tabs for rule builders - FIXED LAYOUT (no blank space)
-        self.tabview = ctk.CTkTabview(self.right_frame)
-        self.tabview.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 6))  # Reduced top padding
+        # Filename Editing
+        self.filename_component = FilenameComponent(self.right_frame, self)
+        self.filename_component.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 8))
 
-        # We'll keep rule containers per tab in a dict
-        self.rule_containers: dict[str, ctk.CTkFrame] = {}
-        for name in ("Title", "Artist", "Album"):
-            tab = self.tabview.add(name)
-            tab.grid_columnconfigure(0, weight=1)
-            tab.grid_rowconfigure(1, weight=1)  # Make the scrollable area expand
-
-            # Create a header frame with label and add button FOR EACH TAB
-            header_frame = ctk.CTkFrame(tab, fg_color="transparent")
-            header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 5))
-            header_frame.grid_columnconfigure(0, weight=1)
-
-            ctk.CTkLabel(header_frame, text=f"{name} Rules", font=ctk.CTkFont(weight="bold")).grid(
-                row=0,
-                column=0,
-                sticky="w",
-                padx=8,
-            )
-
-            add_btn = ctk.CTkButton(
-                header_frame,
-                text="+ Add Rule",
-                width=80,
-                command=lambda n=name: self.add_rule_to_tab(n),
-            )
-            add_btn.grid(row=0, column=1, padx=8, pady=2, sticky="e")
-
-            wrapper = ctk.CTkFrame(tab)
-            wrapper.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="nsew")
-            wrapper.grid_columnconfigure(0, weight=1)
-            wrapper.grid_rowconfigure(0, weight=1)
-
-            # Scrollable container for rules
-            scroll = ctk.CTkScrollableFrame(wrapper)
-            scroll.grid(row=0, column=0, sticky="nsew")
-            scroll.grid_columnconfigure(0, weight=1)
-
-            # Bind scroll wheel events to the scrollable frame for smooth scrolling
-            self._setup_scroll_events(scroll)
-
-            # store container
-            self.rule_containers[name.lower()] = scroll
-
-        # Preview area (JSON, Cover, Output)
-        preview_outer = ctk.CTkFrame(self.right_frame)
-        preview_outer.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))  # Reduced top padding
-        preview_outer.grid_columnconfigure(0, weight=2)
-        preview_outer.grid_columnconfigure(1, weight=1)
-        preview_outer.grid_rowconfigure(0, weight=1)
-
-        # JSON viewer with save button
-        json_frame = ctk.CTkFrame(preview_outer)
-        json_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        json_frame.grid_rowconfigure(1, weight=1)
-        json_frame.grid_columnconfigure(0, weight=1)
-        json_frame.grid_columnconfigure(1, weight=0)
-
-        # JSON header with save button
-        json_header = ctk.CTkFrame(json_frame, fg_color="transparent")
-        json_header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=6, pady=(6, 4))
-        json_header.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(json_header, text="JSON (from comment)").grid(row=0, column=0, sticky="w")
-        self.json_save_btn = ctk.CTkButton(
-            json_header,
-            text="Save JSON",
-            width=80,
-            command=self.save_json_to_file,
-            state="disabled",
-        )
-        self.json_save_btn.grid(row=0, column=1, padx=(8, 0))
-
-        # Configure text widget for theme
-        self.json_text = tk.Text(json_frame, wrap="none", height=12)
-        self._update_json_text_style()
-        self.json_text.grid(row=1, column=0, sticky="nsew", padx=(6, 0), pady=(0, 6))
-        self.json_text.bind("<KeyRelease>", self.on_json_changed)
-        self.json_scroll = ttk.Scrollbar(json_frame, orient="vertical", command=self.json_text.yview)
-        self.json_text.configure(yscrollcommand=self.json_scroll.set)
-        self.json_scroll.grid(row=1, column=1, sticky="ns", pady=(0, 6))
-
-        # Cover preview on right - REMOVED: Cover toggle button and "Cover Preview" text
-        cover_frame = ctk.CTkFrame(preview_outer)
-        cover_frame.grid(row=0, column=1, sticky="nsew")
-        cover_frame.grid_rowconfigure(0, weight=1)
-
-        # Cover display only - no header with toggle button
-        self.cover_display = ctk.CTkLabel(cover_frame, text="Loading cover...", corner_radius=8, justify="center")
-        self.cover_display.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
-
-        # Output preview (Title, Artist, Album, Disc, Track, Versions)
-        out_frame = ctk.CTkFrame(self.right_frame)
-        out_frame.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
-        out_frame.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(out_frame, text="New Title:").grid(row=0, column=0, sticky="e", padx=(6, 6), pady=(6, 2))
-        self.lbl_out_title = ctk.CTkLabel(out_frame, text="", anchor="w", corner_radius=6)
-        self.lbl_out_title.grid(row=0, column=1, sticky="ew", padx=(0, 6), pady=(6, 2))
-
-        ctk.CTkLabel(out_frame, text="New Artist:").grid(row=1, column=0, sticky="e", padx=(6, 6), pady=(2, 2))
-        self.lbl_out_artist = ctk.CTkLabel(out_frame, text="", anchor="w", corner_radius=6)
-        self.lbl_out_artist.grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=(2, 2))
-
-        ctk.CTkLabel(out_frame, text="New Album:").grid(row=2, column=0, sticky="e", padx=(6, 6), pady=(2, 6))
-        self.lbl_out_album = ctk.CTkLabel(out_frame, text="", anchor="w", corner_radius=6)
-        self.lbl_out_album.grid(row=2, column=1, sticky="ew", padx=(0, 6), pady=(2, 6))
-
-        # Disc / Track / Versions / Date small labels
-        dt_frame = ctk.CTkFrame(out_frame, fg_color="transparent")
-        dt_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=6, pady=(0, 6))
-        dt_frame.grid_columnconfigure((1, 3, 5, 7), weight=1)
-
-        ctk.CTkLabel(dt_frame, text="Disc:").grid(row=0, column=0, sticky="e", padx=(0, 4))
-        self.lbl_out_disc = ctk.CTkLabel(dt_frame, text="", anchor="w", corner_radius=6)
-        self.lbl_out_disc.grid(row=0, column=1, sticky="w", padx=(0, 12))
-
-        ctk.CTkLabel(dt_frame, text="Track:").grid(row=0, column=2, sticky="e", padx=(0, 4))
-        self.lbl_out_track = ctk.CTkLabel(dt_frame, text="", anchor="w", corner_radius=6)
-        self.lbl_out_track.grid(row=0, column=3, sticky="w", padx=(0, 12))
-
-        ctk.CTkLabel(dt_frame, text="All Versions:").grid(row=0, column=4, sticky="e", padx=(0, 4))
-        self.lbl_out_versions = ctk.CTkLabel(dt_frame, text="", anchor="w", corner_radius=6)
-        self.lbl_out_versions.grid(row=0, column=5, sticky="w", padx=(0, 12))
-
-        ctk.CTkLabel(dt_frame, text="Date:").grid(row=0, column=6, sticky="e", padx=(0, 4))
-        self.lbl_out_date = ctk.CTkLabel(dt_frame, text="", anchor="w", corner_radius=6)
-        self.lbl_out_date.grid(row=0, column=7, sticky="w", padx=(0, 12))
-
-        # Filename editing section
-        filename_frame = ctk.CTkFrame(self.right_frame)
-        filename_frame.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 8))
-        filename_frame.grid_columnconfigure(1, weight=1)
-        filename_frame.grid_columnconfigure(2, weight=0)
-
-        ctk.CTkLabel(filename_frame, text="Filename:").grid(row=0, column=0, sticky="e", padx=(6, 6), pady=(6, 2))
-        self.filename_var = tk.StringVar()
-        self.filename_entry = ctk.CTkEntry(filename_frame, textvariable=self.filename_var)
-        self.filename_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6), pady=(6, 2))
-        self.filename_entry.bind("<KeyRelease>", self.on_filename_changed)
-
-        self.filename_save_btn = ctk.CTkButton(
-            filename_frame,
-            text="Rename File",
-            width=100,
-            command=self.rename_current_file,
-            state="disabled",
-        )
-        self.filename_save_btn.grid(row=0, column=2, padx=(0, 6), pady=(6, 2))
-
-        # Update output preview styles
-        self._update_output_preview_style()
-
-        # Bottom buttons (Prev/Next/Apply Selected/Apply All) in one row
-        bottom = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        bottom.grid(row=5, column=0, sticky="ew", padx=8, pady=(0, 8))
-        bottom.grid_columnconfigure((0, 1, 2, 3), weight=1)
-
-        ctk.CTkButton(bottom, text="◀ Prev", command=self.prev_file).grid(row=0, column=0, padx=6, pady=6, sticky="ew")
-        ctk.CTkButton(bottom, text="Next ▶", command=self.next_file).grid(row=0, column=1, padx=6, pady=6, sticky="ew")
-        ctk.CTkButton(bottom, text="Apply to Selected", command=self.apply_to_selected).grid(
-            row=0,
-            column=2,
-            padx=6,
-            pady=6,
-            sticky="ew",
-        )
-        ctk.CTkButton(bottom, text="Apply to All", command=self.apply_to_all).grid(
-            row=0,
-            column=3,
-            padx=6,
-            pady=6,
-            sticky="ew",
-        )
+        # Navigation (Bottom buttons)
+        self.navigation_component = NavigationComponent(self.right_frame, self)
+        self.navigation_component.grid(row=5, column=0, sticky="ew", padx=8, pady=(0, 8))
 
         # Set default sash location after window appears
         self.after(150, lambda: self.paned.sash_place(0, int(self.winfo_screenwidth() * 0.62), 0))
         # Initialize rule tab button states
-        self.update_rule_tab_buttons()
-
-    # -------------------------
-    # NEW: Statistics calculation with improved categorization
-    # -------------------------
-    def calculate_statistics(self) -> None:
-        """Calculate comprehensive statistics about the loaded songs."""
-        if not self.mp3_files:
-            self.stats = dict.fromkeys(self.stats, 0)
-            self._update_status_display()
-            print("No files loaded, stats reset to 0")
-            return
-
-        # Delegate calculation to FileManager
-        self.stats = self.file_manager.calculate_statistics()
-
-        print("Statistics calculated:")
-        for key, value in self.stats.items():
-            print(f"  {key}: {value}")
-
-        # Update the status display
-        self._update_status_display()
-
-    def _update_status_display(self) -> None:
-        """Update the main status display."""
-        self.status_label.configure(
-            text=f"All songs: {self.stats.get('all_songs', 0)} | Unique (T,A): {self.stats.get('unique_ta', 0)}",
-        )
-
-    def show_statistics_popup(self) -> None:
-        """Show statistics in a popup window."""
-        if hasattr(self, "_status_popup") and self._status_popup.winfo_exists():
-            self._status_popup.focus_set()
-            return
-
-        self._status_popup = StatisticsDialog(self, self.stats)
+        self.rule_tabs_component.update_rule_tab_buttons()
 
     # -------------------------
     # NEW: Multi-level Sorting Methods
@@ -672,30 +424,6 @@ class DFApp(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Playback Error", f"Could not play file:\n{e!s}")
 
-    def on_json_changed(self, _event: tk.Event | None = None) -> None:
-        """Enable/disable JSON save button based on changes."""
-        if self.current_index is None or not self.current_metadata:
-            self.json_save_btn.configure(state="disabled")
-            return
-
-        try:
-            current_text = self.json_text.get("1.0", "end-1c").strip()
-
-            original_text = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=False)
-
-            # Enable button only if JSON has changed
-            if current_text != original_text:
-                # Validate JSON syntax
-                try:
-                    json.loads(current_text)
-                    self.json_save_btn.configure(state="normal")
-                except json.JSONDecodeError:
-                    self.json_save_btn.configure(state="disabled")
-            else:
-                self.json_save_btn.configure(state="disabled")
-        except Exception:
-            self.json_save_btn.configure(state="disabled")
-
     # -------------------------
     # FIXED: Tree population with correct column order
     # -------------------------
@@ -791,7 +519,7 @@ class DFApp(ctk.CTk):
                     self.operation_in_progress = False
 
                     # Calculate statistics after loading
-                    self.calculate_statistics()
+                    self.statistics_component.calculate_statistics()
 
                     # Close progress dialog after a brief delay
                     if self.progress_dialog:
@@ -813,7 +541,7 @@ class DFApp(ctk.CTk):
     def _update_treeview_style(self) -> None:
         """Update treeview style based on current theme."""
         try:
-            if self.current_theme == "Dark" or (self.current_theme == "System" and ctk.get_appearance_mode() == "Dark"):
+            if self.is_dark_mode:
                 # Dark theme
                 self.style.theme_use("default")
                 self.style.configure(
@@ -842,84 +570,22 @@ class DFApp(ctk.CTk):
         except Exception as e:
             print(f"Error updating treeview style: {e}")
 
-    def _update_json_text_style(self) -> None:
-        """Update JSON text widget style based on current theme."""
-        try:
-            if self.current_theme == "Dark" or (self.current_theme == "System" and ctk.get_appearance_mode() == "Dark"):
-                # Dark theme
-                self.json_text.configure(bg="#2b2b2b", fg="white", insertbackground="white", selectbackground="#1f6aa5")
-            else:
-                # Light theme
-                self.json_text.configure(bg="white", fg="black", insertbackground="black", selectbackground="#0078d7")
-        except Exception as e:
-            print(f"Error updating JSON text style: {e}")
-
-    def _update_output_preview_style(self) -> None:
-        """Update output preview labels style based on current theme."""
-        try:
-            if self.current_theme == "Dark" or (self.current_theme == "System" and ctk.get_appearance_mode() == "Dark"):
-                # Dark theme
-                bg_color = "#3b3b3b"
-                text_color = "white"
-            else:
-                # Light theme
-                bg_color = "#e0e0e0"
-                text_color = "black"
-
-            # Update all output preview labels (including Date)
-            for label in [
-                self.lbl_out_title,
-                self.lbl_out_artist,
-                self.lbl_out_album,
-                self.lbl_out_disc,
-                self.lbl_out_track,
-                self.lbl_out_versions,
-                self.lbl_out_date,
-            ]:
-                label.configure(fg_color=bg_color, text_color=text_color)
-        except Exception as e:
-            print(f"Error updating output preview style: {e}")
-
-    def _update_theme_button(self) -> None:
-        """Update theme button icon based on current theme - Make it look like other buttons."""
-        try:
-            if self.current_theme == "Dark" or (self.current_theme == "System" and ctk.get_appearance_mode() == "Dark"):
-                # Currently dark, show light theme button
-                self.theme_btn.configure(
-                    text="☀️",
-                    fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"],
-                    hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
-                    text_color=ctk.ThemeManager.theme["CTkButton"]["text_color"],
-                )
-            else:
-                # Currently light, show dark theme button
-                self.theme_btn.configure(
-                    text="🌙",
-                    fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"],
-                    hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
-                    text_color=ctk.ThemeManager.theme["CTkButton"]["text_color"],
-                )
-        except Exception as e:
-            print(f"Error updating theme button: {e}")
-
     # Cover Image Functions
     def _safe_cover_display_update(self, text: str, *, clear_image: bool = False) -> None:
         """Safely update cover display without causing Tcl errors."""
         try:
             if clear_image:
                 # Clear image reference first using a safer approach
-                self.cover_display.configure(image=None)
-                self.current_cover_image = None
-            self.cover_display.configure(text=text)
+                self.json_edit_component.cover_display.configure(image=None)
+            self.json_edit_component.cover_display.configure(text=text)
         except Exception:
             # If we get an error, try a more aggressive approach
             try:
-                self.cover_display.configure(image=None, text=text)
-                self.current_cover_image = None
+                self.json_edit_component.cover_display.configure(image=None, text=text)
             except Exception:
                 # Final fallback - just set text
                 with contextlib.suppress(Exception):
-                    self.cover_display.configure(text=text)
+                    self.json_edit_component.cover_display.configure(text=text)
 
     def load_current_cover(self) -> None:
         """Load cover image for current song."""
@@ -930,7 +596,7 @@ class DFApp(ctk.CTk):
 
         # Prevent UI blocking
         current_time = time.time()
-        if current_time - self.last_cover_request_time < 0.3:
+        if current_time - self.last_cover_request_time < 0.1:
             return
         self.last_cover_request_time = current_time
 
@@ -976,8 +642,7 @@ class DFApp(ctk.CTk):
             )
 
             # Update display - the label will center the image automatically
-            self.cover_display.configure(image=ctk_image, text="")
-            self.current_cover_image = ctk_image
+            self.json_edit_component.cover_display.configure(image=ctk_image, text="")
 
         except Exception as e:
             print(f"Error displaying cover: {e}")
@@ -996,17 +661,14 @@ class DFApp(ctk.CTk):
             else:
                 self.current_theme = "Dark"
 
-            # Hide the window during changes
-            # self.withdraw()
-
             # Apply the theme
             ctk.set_appearance_mode(self.current_theme)
 
             # Update all theme-dependent elements with error handling
             self._update_treeview_style()
-            self._update_json_text_style()
-            self._update_output_preview_style()
-            self._update_theme_button()
+            self.json_edit_component.update_json_text_style()
+            self.output_preview_component.update_style()
+            self.preset_component.update_theme_button()
 
             # Refresh the tree to apply new styles
             if self.tree.get_children():
@@ -1021,9 +683,6 @@ class DFApp(ctk.CTk):
 
         except Exception as e:
             print(f"Error toggling theme: {e}")
-
-        # Redisplay the window
-        # self.after_idle(self.deiconify)
 
     # -------------------------
     # UPDATED: Search with version=latest support
@@ -1228,13 +887,13 @@ class DFApp(ctk.CTk):
             data["auto_reopen_last_folder"] = self.auto_reopen_last_folder
 
             # write file
-            self.settings_manager.save_settings(data)
+            SettingsManager.save_settings(data)
         except Exception as e:
             print(f"Error saving settings: {e}")
 
     def load_settings(self) -> None:
         """Load UI settings from JSON file and apply them where possible."""
-        data = self.settings_manager.load_settings()
+        data = SettingsManager.load_settings()
         if not data:
             return
 
@@ -1353,68 +1012,6 @@ class DFApp(ctk.CTk):
             values.append(str(val))
         return tuple(values)
 
-    # -------------------------
-    # JSON Editing Functions
-    # -------------------------
-    def save_json_to_file(self) -> None:
-        """Save the edited JSON back to the current MP3 file."""
-        if self.current_index is None or not self.mp3_files:
-            messagebox.showwarning("No file selected", "Please select a file first")
-            return
-
-        # Get the edited JSON text
-        json_text = self.json_text.get("1.0", "end-1c").strip()
-
-        if not json_text:
-            messagebox.showwarning("Empty JSON", "JSON text is empty")
-            return
-
-        try:
-            # Use FileManager to prepare JSON
-            full_comment, json_data = FileManager.prepare_json_for_save(json_text)
-
-        except json.JSONDecodeError as e:
-            messagebox.showerror("Invalid JSON", f"The JSON is invalid:\n{e!s}")
-            return
-
-        # Confirm save
-        path = self.mp3_files[self.current_index]
-        filename = Path(path).name
-        result = messagebox.askyesno("Confirm Save", f"Save JSON changes to:\n{filename}?")
-
-        if not result:
-            return
-
-        # Show saving indicator
-        _original_text = self.lbl_file_info.cget("text")
-        self.lbl_file_info.configure(text=f"Saving JSON to {filename}...")
-        self.update_idletasks()
-
-        def on_save_complete(filename: str, *, success: bool) -> None:
-            if success:
-                # Update cache with new data
-                self.file_manager.update_file_data(path, json_data)
-                self.current_metadata = self.file_manager.get_metadata(path)
-
-                # Update the treeview with new data
-                self.update_tree_row(self.current_index, json_data)
-
-                self.lbl_file_info.configure(text=f"JSON saved to {filename}")
-                messagebox.showinfo("Success", f"JSON successfully saved to {filename}")
-
-                # Update preview with new data
-                self.update_preview()
-
-                # Disable save button after successful save
-                self.json_save_btn.configure(state="disabled")
-            else:
-                self.lbl_file_info.configure(text=f"Failed to save JSON to {filename}")
-                messagebox.showerror("Error", f"Failed to save JSON to {filename}")
-
-        # Save JSON
-        saved = mp3_utils.write_json_to_mp3(path, full_comment)
-        self.after(0, lambda: on_save_complete(filename, success=saved))
-
     def update_tree_row(self, index: int, json_data: dict[str, str]) -> None:
         """Update a specific row in the treeview with new JSON data."""
         if index < 0 or index >= len(self.mp3_files):
@@ -1444,22 +1041,6 @@ class DFApp(ctk.CTk):
     # -------------------------
     # Filename Editing Functions
     # -------------------------
-    def on_filename_changed(self, _event: tk.Event | None = None) -> None:
-        """Enable/disable rename button based on filename changes."""
-        if self.current_index is None:
-            self.filename_save_btn.configure(state="disabled")
-            return
-
-        current_path = self.mp3_files[self.current_index]
-        current_filename = Path(current_path).name
-        new_filename = self.filename_var.get().strip()
-
-        # Enable button only if filename has changed and is not empty
-        if new_filename and new_filename != current_filename:
-            self.filename_save_btn.configure(state="normal")
-        else:
-            self.filename_save_btn.configure(state="disabled")
-
     def rename_current_file(self) -> None:
         """Rename the current file to the new filename."""
         if self.current_index is None:
@@ -1467,7 +1048,7 @@ class DFApp(ctk.CTk):
 
         current_path = self.mp3_files[self.current_index]
         current_filename = Path(current_path).name
-        new_filename = self.filename_var.get().strip()
+        new_filename = self.filename_component.filename_var.get().strip()
 
         if not new_filename:
             messagebox.showwarning("Empty filename", "Please enter a new filename")
@@ -1515,8 +1096,8 @@ class DFApp(ctk.CTk):
                     self.update_tree_row(self.current_index, self.current_metadata.raw_data)
 
                 # Update filename entry to show new name
-                self.filename_var.set(new_name_or_error)
-                self.filename_save_btn.configure(state="disabled")
+                self.filename_component.filename_var.set(new_name_or_error)
+                self.filename_component.filename_save_btn.configure(state="disabled")
 
                 self.lbl_file_info.configure(text=f"Renamed {old_name} to {new_name_or_error}")
                 messagebox.showinfo("Success", f"File renamed successfully!\n\n{old_name} → {new_name_or_error}")
@@ -1531,197 +1112,6 @@ class DFApp(ctk.CTk):
             error_message = str(e)
 
         self.after_idle(lambda: on_rename_complete(current_filename, error_message or new_filename, success=renamed))
-
-    def move_rule(self, widget: RuleRow, direction: int) -> None:
-        """Move a rule up or down."""
-        container = widget.master
-
-        # Use pack_slaves to get the current visual order
-        slaves = container.pack_slaves()
-        children = [w for w in slaves if isinstance(w, RuleRow)]
-
-        try:
-            idx = children.index(widget)
-        except ValueError:
-            return
-
-        new_idx = idx + direction
-        if new_idx < 0 or new_idx >= len(children):
-            return
-
-        # Swap in list
-        children.pop(idx)
-        children.insert(new_idx, widget)
-
-        # Repack all RuleRows
-        for child in children:
-            child.pack_forget()
-
-        for i, child in enumerate(children):
-            child.pack(fill="x", padx=6, pady=3)
-            # Update visual state
-            child.set_first(is_first=i == 0)
-            child.set_button_states(is_top=i == 0, is_bottom=i == len(children) - 1)
-
-        # Rebind scroll events after reordering
-        self._setup_scroll_events(container)
-
-        self.force_preview_update()
-
-    def delete_rule(self, widget: RuleRow) -> None:
-        """Delete a rule from its container - UPDATED: With button state update."""
-        container = widget.master
-        children = [w for w in container.winfo_children() if isinstance(w, RuleRow)]
-
-        if widget not in children:
-            return
-
-        # Remove the widget
-        widget.destroy()
-
-        # Update button states for remaining rules
-        self.after(0, lambda: self.update_rule_button_states(container))
-
-        # Rebind scroll events after deletion
-        self._setup_scroll_events(container)
-
-        # Update button states after deletion (rules are now below limit)
-        self.update_rule_tab_buttons()
-        self.update_preview()
-
-    def add_rule_to_tab(self, tab_name: str) -> None:
-        """Add a rule to the specified tab - UPDATED: With rule limit check."""
-        container = self.rule_containers.get(tab_name.lower())
-        if container:
-            # Count current rules in this tab
-            current_rules = len([w for w in container.winfo_children() if isinstance(w, RuleRow)])
-
-            # Check if we've reached the limit
-            if current_rules >= self.max_rules_per_tab:
-                messagebox.showinfo("Rule limit", f"Maximum of {self.max_rules_per_tab} rules reached for {tab_name}")
-                return
-
-            self.add_rule(container)
-
-            # Update button states after adding
-            self.update_rule_tab_buttons()
-
-    def update_rule_tab_buttons(self) -> None:
-        """Update the Add Rule buttons for each tab based on rule counts."""
-        for tab_name, container in self.rule_containers.items():
-            # Count current rules in this tab
-            current_rules = len([w for w in container.winfo_children() if isinstance(w, RuleRow)])
-
-            # Find the Add Rule button for this tab
-            # We need to get to the header frame that contains the button
-            tab = self.tabview.tab(tab_name.capitalize())
-            if tab:
-                # The header frame is the first child of the tab (row 0)
-                header_frame = tab.grid_slaves(row=0, column=0)
-                if header_frame:
-                    header_frame = header_frame[0]
-                    # The Add Rule button is in column 1 of the header frame
-                    add_buttons = header_frame.grid_slaves(row=0, column=1)
-                    if add_buttons:
-                        add_button = add_buttons[0]
-                        # Disable button if max rules reached
-                        if current_rules >= self.max_rules_per_tab:
-                            add_button.configure(state="disabled")
-                        else:
-                            add_button.configure(state="normal")
-
-    def _setup_scroll_events(self, scroll_frame: ctk.CTkScrollableFrame) -> None:
-        """Setup mouse wheel scrolling for a scrollable frame."""
-        if not hasattr(scroll_frame, "_parent_canvas"):
-            return
-
-        canvas = scroll_frame._parent_canvas
-        root_window = scroll_frame.winfo_toplevel()
-
-        def on_mousewheel(event: tk.Event) -> None:
-            """Handle mouse wheel events for scrolling."""
-            try:
-                # Check if the mouse is within the canvas bounds
-                canvas_x = canvas.winfo_rootx()
-                canvas_y = canvas.winfo_rooty()
-                canvas_width = canvas.winfo_width()
-                canvas_height = canvas.winfo_height()
-
-                if not (
-                    canvas_x <= event.x_root <= canvas_x + canvas_width
-                    and canvas_y <= event.y_root <= canvas_y + canvas_height
-                ):
-                    return  # Mouse is not over this scroll area
-
-                if platform.system() == "Windows":
-                    delta = int(-1 * (event.delta / 120))
-                elif platform.system() == "Darwin":  # macOS
-                    delta = int(-1 * event.delta)
-                else:  # Linux
-                    delta = -1 if event.num == 4 else 1
-
-                # Scroll the canvas
-                canvas.yview_scroll(delta, "units")
-            except Exception:
-                pass
-
-        # Bind to root window using bind_all to catch all mouse wheel events
-        if platform.system() == "Linux":
-            root_window.bind_all("<Button-4>", on_mousewheel, add=True)
-            root_window.bind_all("<Button-5>", on_mousewheel, add=True)
-        else:
-            root_window.bind_all("<MouseWheel>", on_mousewheel, add=True)
-
-    def _add_scroll_overlay(self, rule_row: RuleRow, container: ctk.CTkFrame) -> None:
-        """Add scroll event handling to rule row to detect mouse hover and enable scrolling."""
-        # Scroll events are bound at the container level, not per-row
-        # This method is kept for compatibility but does nothing
-        pass
-
-    def add_rule(self, container: ctk.CTkFrame) -> None:
-        """Add a rule row to the specified container."""
-        # Count current rules to determine if this is the first one
-        current_rules = len([w for w in container.winfo_children() if isinstance(w, RuleRow)])
-        is_first = current_rules == 0
-
-        row = RuleRow(
-            container,
-            self.rule_ops,
-            move_callback=self.move_rule,
-            delete_callback=self.delete_rule,
-            is_first=is_first,
-        )
-        row.pack(fill="x", padx=6, pady=3)
-
-        # Rebind scroll events to the container to include the new rule
-        self._setup_scroll_events(container)
-
-        # default template suggestions based on container tab
-        parent_tab = self._container_to_tab(container)
-        if parent_tab == "title":
-            row.template_entry.insert(0, f"{{{MetadataFields.COVER_ARTIST}}} - {{{MetadataFields.TITLE}}}")
-        elif parent_tab == "artist":
-            row.template_entry.insert(0, f"{{{MetadataFields.COVER_ARTIST}}}")
-        elif parent_tab == "album":
-            row.template_entry.insert(0, f"Archive VOL {{{MetadataFields.DISC}}}")
-
-        # FIXED: Use force preview update for immediate response
-        def update_callback(*args) -> None:
-            self.force_preview_update()
-
-        row.field_var.trace("w", update_callback)
-        row.op_var.trace("w", update_callback)
-        row.logic_var.trace("w", update_callback)  # Add logic change listener
-        row.value_entry.bind("<KeyRelease>", lambda _e: self.force_preview_update())
-        row.template_entry.bind("<KeyRelease>", lambda _e: self.force_preview_update())
-
-        # Update button states for all rules in this container
-        self.update_rule_button_states(container)
-
-        # Update button states after adding
-        self.update_rule_tab_buttons()
-        # Initial update
-        self.force_preview_update()
 
     # -------------------------
     # File / tree operations
@@ -1851,7 +1241,7 @@ class DFApp(ctk.CTk):
         self.search_info_label.configure(text=info)
 
         # Update statistics for filtered results
-        self.calculate_statistics()
+        self.statistics_component.calculate_statistics()
 
     def on_tree_select(self, _event: tk.Event | None = None) -> None:
         """Handle tree selection change."""
@@ -1884,33 +1274,32 @@ class DFApp(ctk.CTk):
         self.current_metadata = self.file_manager.get_metadata(path)
 
         # Show JSON
-        self.json_text.delete("1.0", "end")
+        self.json_edit_component.json_text.delete("1.0", "end")
         if self.current_metadata.raw_data:
             try:
                 # FIXED: Ensure proper encoding for JSON dump
                 json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=False)
-                self.json_text.insert("1.0", json_str)
+                self.json_edit_component.json_text.insert("1.0", json_str)
             except Exception as e:
                 print(f"Error displaying JSON: {e}")
                 # Fallback: try with ASCII encoding
                 try:
                     json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=True)
-                    self.json_text.insert("1.0", json_str)
+                    self.json_edit_component.json_text.insert("1.0", json_str)
                 except Exception:
-                    self.json_text.insert("1.0", "Error displaying JSON data")
+                    self.json_edit_component.json_text.insert("1.0", "Error displaying JSON data")
         else:
-            self.json_text.insert("1.0", "No JSON found in comments")
-
+            self.json_edit_component.json_text.insert("1.0", "No JSON found in comments")
         # Disable JSON save button initially (no changes yet)
-        self.json_save_btn.configure(state="disabled")
+        self.json_edit_component.json_save_btn.configure(state="disabled")
 
         # Load current filename
         current_filename = Path(path).name
-        self.filename_var.set(current_filename)
-        self.filename_save_btn.configure(state="disabled")
+        self.filename_component.filename_var.set(current_filename)
+        self.filename_component.filename_save_btn.configure(state="disabled")
 
         # FIXED: Update preview FIRST, then load cover
-        self.update_preview()
+        self.output_preview_component.update_preview()
 
         # Load cover AFTER preview is updated
         self.load_current_cover()
@@ -1969,83 +1358,11 @@ class DFApp(ctk.CTk):
         self.lbl_selection_info.configure(text=f"{len(self.tree.selection())} song(s) selected")
 
     # -------------------------
-    # Rule evaluation & preview
+    # Rule evaluation
     # -------------------------
-    def update_preview(self) -> None:
-        """Update the output preview based on current rules and selected JSON."""
-        if not self.current_metadata:
-            self.lbl_out_title.configure(text="")
-            self.lbl_out_artist.configure(text="")
-            self.lbl_out_album.configure(text="")
-            self.lbl_out_disc.configure(text="")
-            self.lbl_out_track.configure(text="")
-            self.lbl_out_versions.configure(text="")
-            return
-
-        metadata = self.current_metadata
-
-        # FIXED: Use the correct method to collect rules for each tab
-        new_title = RuleManager.apply_rules_list(
-            self.collect_rules_for_tab("title"),
-            metadata,
-        )
-        new_artist = RuleManager.apply_rules_list(
-            self.collect_rules_for_tab("artist"),
-            metadata,
-        )
-        new_album = RuleManager.apply_rules_list(
-            self.collect_rules_for_tab("album"),
-            metadata,
-        )
-
-        # FIXED: Safe text setting for non-ASCII characters
-        try:
-            self.lbl_out_title.configure(text=new_title)
-            self.lbl_out_artist.configure(text=new_artist)
-            self.lbl_out_album.configure(text=new_album)
-            self.lbl_out_disc.configure(text=metadata.disc)
-            self.lbl_out_track.configure(text=metadata.track)
-            self.lbl_out_date.configure(text=metadata.date)
-        except Exception as e:
-            print(f"Error setting preview text: {e}")
-            # Fallback: set empty text to avoid freezing
-            self.lbl_out_title.configure(text="")
-            self.lbl_out_artist.configure(text="")
-            self.lbl_out_album.configure(text="")
-
-        # Show all versions for current song (considering title + artist + coverartist)
-        song_key = f"{metadata.title}|{metadata.artist}|{metadata.coverartist}"
-
-        versions = self.file_manager.get_song_versions(song_key)
-        if versions:
-            formatted_versions = []
-            for v in versions:
-                if isinstance(v, float) and v.is_integer():
-                    formatted_versions.append(str(int(v)))
-                else:
-                    formatted_versions.append(str(v))
-            versions_text = ", ".join(formatted_versions)
-            self.lbl_out_versions.configure(text=versions_text)
-        else:
-            self.lbl_out_versions.configure(text="")
-
-    def safe_update_preview(self) -> None:
-        """Safe wrapper for update_preview with exception handling."""
-        try:
-            self.update_preview()
-        except Exception as e:
-            print(f"Critical error in preview update: {e}")
-            # Emergency fallback - clear all previews
-            self.lbl_out_title.configure(text="")
-            self.lbl_out_artist.configure(text="")
-            self.lbl_out_album.configure(text="")
-            self.lbl_out_disc.configure(text="")
-            self.lbl_out_track.configure(text="")
-            self.lbl_out_versions.configure(text="")
-
     def collect_rules_for_tab(self, key: str) -> list[dict[str, str]]:
         """Key in 'title','artist','album' - Enhanced for AND/OR grouping."""
-        container = self.rule_containers.get(key)
+        container = self.rule_tabs_component.rule_containers.get(key)
         if not container:
             return []
         rules = []
@@ -2061,19 +1378,6 @@ class DFApp(ctk.CTk):
 
         return rules
 
-    def debug_rules(self) -> None:
-        """Debug method to see what rules are loaded."""
-        print("=== DEBUG RULES ===")
-        for tab in ["title", "artist", "album"]:
-            rules = self.collect_rules_for_tab(tab)
-            print(f"{tab.upper()} rules: {len(rules)}")
-            for i, rule in enumerate(rules):
-                print(
-                    f"  Rule {i}: IF {rule.get('if_field')} {rule.get('if_operator')} '{rule.get('if_value')}' THEN '{rule.get('then_template')}'",
-                )
-        print("===================")
-
-    # -------------------------
     # Apply metadata to files
     # -------------------------
     def apply_to_selected(self) -> None:
@@ -2237,7 +1541,7 @@ class DFApp(ctk.CTk):
 
         try:
             # Save as individual file in presets folder
-            self.settings_manager.save_preset(name, preset)
+            SettingsManager.save_preset(name, preset)
 
             # update combobox list
             self._reload_presets()
@@ -2250,15 +1554,15 @@ class DFApp(ctk.CTk):
     def _reload_presets(self) -> None:
         """Reload presets from individual files in presets folder."""
         try:
-            vals = self.settings_manager.list_presets()
-            self.preset_combo["values"] = vals
+            vals = SettingsManager.list_presets()
+            self.preset_component.preset_combo["values"] = vals
         except Exception as e:
             print(f"Error loading presets: {e}")
-            self.preset_combo["values"] = []
+            self.preset_component.preset_combo["values"] = []
 
     def delete_preset(self) -> None:
         """Delete the selected preset."""
-        name = self.preset_var.get()
+        name = self.preset_component.preset_var.get()
         if not name:
             return
 
@@ -2270,9 +1574,9 @@ class DFApp(ctk.CTk):
         try:
             confirm = messagebox.askyesno("Delete", f"Delete preset '{name}'?")
             if confirm:
-                self.settings_manager.delete_preset(name)
+                SettingsManager.delete_preset(name)
                 self._reload_presets()
-                self.preset_var.set("")  # Clear current selection
+                self.preset_component.preset_var.set("")  # Clear current selection
                 self.lbl_file_info.configure(text=original_text)
                 messagebox.showinfo("Deleted", f"Preset '{name}' deleted successfully!")
             else:
@@ -2286,7 +1590,7 @@ class DFApp(ctk.CTk):
 
     def on_preset_selected(self, _event: tk.Event | None = None) -> None:
         """Handle preset selection from the combobox."""
-        name = self.preset_var.get()
+        name = self.preset_component.preset_var.get()
         if not name:
             return
 
@@ -2297,7 +1601,7 @@ class DFApp(ctk.CTk):
 
         try:
             try:
-                preset = self.settings_manager.load_preset(name)
+                preset = SettingsManager.load_preset(name)
             except FileNotFoundError:
                 self.lbl_file_info.configure(text=original_text)
                 messagebox.showwarning("Not Found", f"Preset file '{name}.json' not found")
@@ -2309,7 +1613,7 @@ class DFApp(ctk.CTk):
 
             # In on_preset_selected method, update the rule loading section:
             for key in ("title", "artist", "album"):
-                cont = self.rule_containers.get(key)
+                cont = self.rule_tabs_component.rule_containers.get(key)
                 # destroy existing RuleRow children
                 for w in cont.winfo_children():
                     w.destroy()
@@ -2322,14 +1626,14 @@ class DFApp(ctk.CTk):
                     is_first = i == 0
                     row = RuleRow(
                         cont,
-                        self.rule_ops,
-                        move_callback=self.move_rule,
-                        delete_callback=self.delete_rule,
+                        DFApp.RULE_OPS,
+                        move_callback=self.rule_tabs_component.move_rule,
+                        delete_callback=self.rule_tabs_component.delete_rule,
                         is_first=is_first,
                     )
                     row.pack(fill="x", padx=6, pady=3)
                     row.field_var.set(r.get("if_field", MetadataFields.get_json_keys()[0]))
-                    row.op_var.set(r.get("if_operator", self.rule_ops[0]))
+                    row.op_var.set(r.get("if_operator", DFApp.RULE_OPS[0]))
                     row.value_entry.insert(0, r.get("if_value", ""))
                     row.template_entry.insert(0, r.get("then_template", ""))
                     # Set logic for non-first rules
@@ -2340,9 +1644,9 @@ class DFApp(ctk.CTk):
                 self.update_rule_button_states(cont)
 
             # Update button states after loading preset
-            self.update_rule_tab_buttons()
+            self.rule_tabs_component.update_rule_tab_buttons()
             self.lbl_file_info.configure(text=f"Loaded preset '{name}'")
-            self.update_preview()
+            self.output_preview_component.update_preview()
 
             # Reset to original text after a delay
             self.after_idle(lambda: self.lbl_file_info.configure(text=original_text))
@@ -2356,7 +1660,7 @@ class DFApp(ctk.CTk):
     # -------------------------
     def _container_to_tab(self, container: ctk.CTkFrame) -> str:
         """Get tab name from container widget."""
-        for tab_name, cont in self.rule_containers.items():
+        for tab_name, cont in self.rule_tabs_component.rule_containers.items():
             if cont == container:
                 return tab_name
         return "title"
@@ -2369,6 +1673,11 @@ class DFApp(ctk.CTk):
         for i, child in enumerate(children):
             child.set_first(is_first=i == 0)
             child.set_button_states(is_top=i == 0, is_bottom=i == len(children) - 1)
+
+    @property
+    def is_dark_mode(self) -> bool:
+        """Check if current theme is dark mode."""
+        return self.current_theme == "Dark" or (self.current_theme == "System" and ctk.get_appearance_mode() == "Dark")
 
     def run(self) -> None:
         """Run the main application loop."""

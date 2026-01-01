@@ -1,4 +1,4 @@
-"""A collection of custom UI widgets for the Database Reformatter App."""
+"""Rule Row widgets for Rule Builder."""
 
 import tkinter as tk
 from collections.abc import Callable

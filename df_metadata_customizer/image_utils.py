@@ -6,7 +6,7 @@ from collections import deque
 from PIL import Image
 
 
-class OptimizedImageCache:
+class LRUImageCache:
     """Optimized cache for cover images with pre-resized versions."""
 
     def __init__(self, max_size: int = 100) -> None:
@@ -33,7 +33,7 @@ class OptimizedImageCache:
     def put(self, key: str, image: Image.Image | None, *, resize: bool=True) -> Image.Image | None:
         """Add image to cache with LRU eviction."""
         if resize:
-            image = OptimizedImageCache.optimize_image_for_display(image)
+            image = LRUImageCache.optimize_image_for_display(image)
 
         if not image:
             return None
@@ -91,7 +91,7 @@ class OptimizedImageCache:
             new_width = int(square_size[1] * img_ratio)
 
         # Resize the image to fit within the square container
-        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS) # TODO: Use NEAREST/HAMMING for future performance mode
 
         # Convert to RGB if necessary
         if resized_img.mode != "RGB":
