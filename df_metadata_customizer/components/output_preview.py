@@ -1,11 +1,18 @@
+"""Output Preview Component."""
+
+from typing import override
+
 import customtkinter as ctk
 
+from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.rule_manager import RuleManager
-from df_metadata_customizer.ui_components.app_component import AppComponent
 
 
 class OutputPreviewComponent(AppComponent):
-    def setup_ui(self):
+    """Output Preview Component to see the output of metadata rules in real-time."""
+
+    @override
+    def setup_ui(self) -> None:
         self.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(self, text="New Title:").grid(row=0, column=0, sticky="e", padx=(6, 6), pady=(6, 2))
@@ -40,10 +47,10 @@ class OutputPreviewComponent(AppComponent):
         self.lbl_out_date = ctk.CTkLabel(dt_frame, text="", anchor="w", corner_radius=6)
         self.lbl_out_date.grid(row=0, column=7, sticky="w", padx=(0, 12))
 
-        self.update_style()
+        self.update_theme()
 
-    def update_style(self) -> None:
-        """Update output preview labels based on current theme."""
+    @override
+    def update_theme(self) -> None:
         try:
             if self.app.is_dark_mode:
                 # Dark theme
@@ -103,6 +110,7 @@ class OutputPreviewComponent(AppComponent):
             self.lbl_out_disc.configure(text=metadata.disc)
             self.lbl_out_track.configure(text=metadata.track)
             self.lbl_out_date.configure(text=metadata.date)
+
         except Exception as e:
             print(f"Error setting preview text: {e}")
             self.lbl_out_title.configure(text="")

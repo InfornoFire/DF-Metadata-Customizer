@@ -1,18 +1,24 @@
+"""JSON Editor Component."""
+
 import contextlib
 import json
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
+from typing import override
 
 import customtkinter as ctk
 
 from df_metadata_customizer import mp3_utils
+from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.file_manager import FileManager
-from df_metadata_customizer.ui_components.app_component import AppComponent
 
 
 class JSONEditComponent(AppComponent):
-    def setup_ui(self):
+    """JSON Editor component for viewing and editing JSON metadata."""
+
+    @override
+    def setup_ui(self) -> None:
         self.grid_columnconfigure(0, weight=2)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -39,7 +45,7 @@ class JSONEditComponent(AppComponent):
         self.json_save_btn.grid(row=0, column=1, padx=(8, 0))
 
         self.json_text = tk.Text(json_frame, wrap="none", height=12)
-        self.update_json_text_style()
+        self.update_theme()
         self.json_text.grid(row=1, column=0, sticky="nsew", padx=(6, 0), pady=(0, 6))
         self.json_text.bind("<KeyRelease>", self.on_json_changed)
 
@@ -55,8 +61,8 @@ class JSONEditComponent(AppComponent):
         self.cover_display = ctk.CTkLabel(cover_frame, text="Loading cover...", corner_radius=8, justify="center")
         self.cover_display.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
 
-    def update_json_text_style(self) -> None:
-        """Update JSON text widget colors based on theme."""
+    @override
+    def update_theme(self) -> None:
         try:
             if self.app.is_dark_mode:
                 self.json_text.configure(bg="#2b2b2b", fg="white", insertbackground="white", selectbackground="#1f6aa5")

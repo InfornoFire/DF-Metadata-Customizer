@@ -13,13 +13,7 @@ import customtkinter as ctk
 from PIL import Image
 
 from df_metadata_customizer import mp3_utils
-from df_metadata_customizer.dialogs import ConfirmDialog, ProgressDialog
-from df_metadata_customizer.file_manager import FileManager
-from df_metadata_customizer.image_utils import LRUImageCache
-from df_metadata_customizer.rule_manager import RuleManager
-from df_metadata_customizer.settings_manager import SettingsManager
-from df_metadata_customizer.song_metadata import MetadataFields
-from df_metadata_customizer.ui_components import (
+from df_metadata_customizer.components import (
     FilenameComponent,
     JSONEditComponent,
     NavigationComponent,
@@ -31,6 +25,12 @@ from df_metadata_customizer.ui_components import (
     StatisticsComponent,
     TreeComponent,
 )
+from df_metadata_customizer.dialogs import ConfirmDialog, ProgressDialog
+from df_metadata_customizer.file_manager import FileManager
+from df_metadata_customizer.image_utils import LRUImageCache
+from df_metadata_customizer.rule_manager import RuleManager
+from df_metadata_customizer.settings_manager import SettingsManager
+from df_metadata_customizer.song_metadata import MetadataFields
 from df_metadata_customizer.widgets import RuleRow
 
 if TYPE_CHECKING:
@@ -418,11 +418,11 @@ class DFApp(ctk.CTk):
             # Apply the theme
             ctk.set_appearance_mode(self.current_theme)
 
-            # Update all theme-dependent elements with error handling
-            self.tree_component.update_treeview_style()
-            self.json_edit_component.update_json_text_style()
-            self.output_preview_component.update_style()
-            self.preset_component.update_theme_button()
+            # Update all theme-dependent elements
+            self.tree_component.update_theme()
+            self.json_edit_component.update_theme()
+            self.output_preview_component.update_theme()
+            self.preset_component.update_theme()
 
             # Refresh the tree to apply new styles
             if self.tree_component.tree.get_children():
@@ -441,12 +441,6 @@ class DFApp(ctk.CTk):
     # -------------------------
     # UPDATED: Search with version=latest support
     # -------------------------
-    def on_search_keyrelease(self, _event: tk.Event | None = None) -> None:
-        """Debounced search handler."""
-        if hasattr(self, "_search_after_id"):
-            self.after_cancel(self._search_after_id)
-        self._search_after_id = self.after_idle(self.refresh_tree)
-
     def on_tree_click(self, event: tk.Event) -> None:
         """Handle column header clicks for reordering."""
         region = self.tree_component.tree.identify_region(event.x, event.y)

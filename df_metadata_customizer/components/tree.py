@@ -1,14 +1,21 @@
-from tkinter import ttk
+"""Tree View Component."""
 
+from tkinter import ttk
+from typing import override
+
+from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.song_metadata import MetadataFields
-from df_metadata_customizer.ui_components.app_component import AppComponent
 
 
 class TreeComponent(AppComponent):
+    """Tree view component for song list."""
+
+    @override
     def initialize_state(self) -> None:
         self.dragged_column = None
         self.highlighted_column = None
 
+    @override
     def setup_ui(self) -> None:
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -23,7 +30,7 @@ class TreeComponent(AppComponent):
 
         # Configure treeview style - will be updated by theme
         self.style = ttk.Style()
-        self.update_treeview_style()
+        self.update_theme()
 
         # Configure columns
         column_configs = {
@@ -65,8 +72,8 @@ class TreeComponent(AppComponent):
         self.tree_scroll_v.grid(row=0, column=1, sticky="ns")
         self.tree_scroll_h.grid(row=1, column=0, sticky="ew")
 
-    def update_treeview_style(self) -> None:
-        """Update treeview style based on current theme."""
+    @override
+    def update_theme(self) -> None:
         try:
             dark = self.app.is_dark_mode
             self.style.theme_use("default")
@@ -93,3 +100,7 @@ class TreeComponent(AppComponent):
             )
         except Exception as e:
             print(f"Error updating treeview style: {e}")
+
+    @override
+    def register_events(self) -> None:
+        self.app.bind("<<TreeComponent:RefreshTree>>", self.app.refresh_tree)

@@ -1,9 +1,12 @@
+"""Components Base Class."""
+
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
 if TYPE_CHECKING:
     from df_metadata_customizer.database_reformatter import DFApp
+
 
 class AppComponent(ctk.CTkFrame):
     """Base class for UI components that are part of the DFApp."""
@@ -14,9 +17,22 @@ class AppComponent(ctk.CTkFrame):
         self.app = app
         self.initialize_state()
         self.setup_ui()
+        self.register_events()
 
     def initialize_state(self) -> None:
-        """Override this method to initialize component state before UI setup."""
+        """Initialize component state before UI setup."""
 
     def setup_ui(self) -> None:
-        """Override this method to build the UI for the component."""
+        """Build the UI for the component."""
+
+    def register_events(self) -> None:
+        """Register virtual events.
+
+        Format should be "<<Class:EventName>>".
+        """
+
+    def update_theme(self) -> None:
+        """Update component based on current theme.
+
+        This function should be safe to call at any time.
+        """

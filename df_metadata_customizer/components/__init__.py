@@ -1,3 +1,5 @@
+"""A collection of components for the Database Reformatter App."""
+
 from .app_component import AppComponent
 from .filename import FilenameComponent
 from .json_editor import JSONEditComponent

@@ -1,10 +1,17 @@
+"""Statistics Component."""
+
+from typing import override
+
 import customtkinter as ctk
 
+from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.dialogs import StatisticsDialog
-from df_metadata_customizer.ui_components.app_component import AppComponent
 
 
 class StatisticsComponent(AppComponent):
+    """Statistics component for displaying song statistics."""
+
+    @override
     def initialize_state(self) -> None:
         self.stats = {
             "all_songs": 0,
@@ -20,6 +27,7 @@ class StatisticsComponent(AppComponent):
             "other_total": 0,
         }
 
+    @override
     def setup_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
 

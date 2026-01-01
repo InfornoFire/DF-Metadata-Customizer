@@ -1,13 +1,19 @@
+"""Preset Component."""
+
 import tkinter as tk
 from tkinter import ttk
+from typing import override
 
 import customtkinter as ctk
 
-from df_metadata_customizer.ui_components.app_component import AppComponent
+from df_metadata_customizer.components.app_component import AppComponent
 
 
 class PresetComponent(AppComponent):
-    def setup_ui(self):
+    """Preset selection and management component."""
+
+    @override
+    def setup_ui(self) -> None:
         self.configure(fg_color="transparent")
         self.grid_columnconfigure(1, weight=1)
 
@@ -32,10 +38,10 @@ class PresetComponent(AppComponent):
             hover_color=("gray70", "gray30"),
         )
         self.theme_btn.grid(row=0, column=4, padx=(8, 0))
-        self.update_theme_button()
+        self.update_theme()
 
-    def update_theme_button(self) -> None:
-        """Update theme button icon based on current theme."""
+    @override
+    def update_theme(self) -> None:
         try:
             if self.app.is_dark_mode:
                 # Currently dark, show light theme button

@@ -1,18 +1,25 @@
+"""Sorting Component."""
+
 import contextlib
 from tkinter import messagebox
+from typing import override
 
 import customtkinter as ctk
 
+from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.song_metadata import MetadataFields
-from df_metadata_customizer.ui_components.app_component import AppComponent
 from df_metadata_customizer.widgets import SortRuleRow
 
 
 class SortingComponent(AppComponent):
+    """Sorting component for managing sort rules in the song list."""
+
+    @override
     def initialize_state(self) -> None:
         self.max_sort_rules = 5
         self.sort_rules: list[SortRuleRow] = []
 
+    @override
     def setup_ui(self) -> None:
         self.configure(fg_color="transparent")
         self.grid_columnconfigure(1, weight=1)
@@ -26,9 +33,7 @@ class SortingComponent(AppComponent):
         self.add_sort_rule(is_first=True)
 
         # Add sort rule button
-        self.add_sort_btn = ctk.CTkButton(
-            self, text="+ Add Sort", width=80, command=lambda: self.add_sort_rule()
-        )
+        self.add_sort_btn = ctk.CTkButton(self, text="+ Add Sort", width=80, command=lambda: self.add_sort_rule())
         self.add_sort_btn.grid(row=1, column=0, sticky="w", pady=(2, 0))
 
         # Search info label (next to Add Sort)
@@ -40,9 +45,7 @@ class SortingComponent(AppComponent):
         # Enforce maximum number of sort rules
         if len(self.sort_rules) >= self.max_sort_rules:
             with contextlib.suppress(Exception):
-                messagebox.showinfo(
-                    "Sort limit", f"Maximum of {self.max_sort_rules} sort levels reached"
-                )
+                messagebox.showinfo("Sort limit", f"Maximum of {self.max_sort_rules} sort levels reached")
             return
 
         row = SortRuleRow(
@@ -68,11 +71,7 @@ class SortingComponent(AppComponent):
 
         # Disable add button if we've reached the max
         if hasattr(self, "add_sort_btn"):
-            self.add_sort_btn.configure(
-                state="disabled"
-                if len(self.sort_rules) >= self.max_sort_rules
-                else "normal"
-            )
+            self.add_sort_btn.configure(state="disabled" if len(self.sort_rules) >= self.max_sort_rules else "normal")
 
     def move_sort_rule(self, widget: SortRuleRow, direction: int) -> None:
         """Move a sort rule up or down."""
@@ -149,17 +148,11 @@ class SortingComponent(AppComponent):
                 rule.up_btn.configure(state="normal" if i > 1 else "disabled")
             if hasattr(rule, "down_btn"):
                 # Can't move down if it's the last rule or if moving down would make it first
-                rule.down_btn.configure(
-                    state="normal"
-                    if i < len(self.sort_rules) - 1 and i != 0
-                    else "disabled"
-                )
+                rule.down_btn.configure(state="normal" if i < len(self.sort_rules) - 1 and i != 0 else "disabled")
 
         # Also update Add button state according to max allowed rules
         if hasattr(self, "add_sort_btn"):
             with contextlib.suppress(Exception):
                 self.add_sort_btn.configure(
-                    state="disabled"
-                    if len(self.sort_rules) >= self.max_sort_rules
-                    else "normal",
+                    state="disabled" if len(self.sort_rules) >= self.max_sort_rules else "normal",
                 )

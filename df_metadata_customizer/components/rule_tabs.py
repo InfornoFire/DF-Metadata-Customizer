@@ -1,19 +1,25 @@
-"""Rule Tabs Component for Metadata Customizer UI."""
+"""Rule Tabs Component."""
+
 import platform
 from tkinter import messagebox
+from typing import override
 
 import customtkinter as ctk
 
+from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.song_metadata import MetadataFields
-from df_metadata_customizer.ui_components.app_component import AppComponent
 from df_metadata_customizer.widgets import RuleRow
 
 
 class RuleTabsComponent(AppComponent):
-    def initialize_state(self):
-        self.rule_containers: dict[str, ctk.CTkFrame]  = {}
+    """Component managing rule tabs for Title, Artist, and Album."""
 
-    def setup_ui(self):
+    @override
+    def initialize_state(self) -> None:
+        self.rule_containers: dict[str, ctk.CTkFrame] = {}
+
+    @override
+    def setup_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -83,7 +89,7 @@ class RuleTabsComponent(AppComponent):
 
         row = RuleRow(
             container,
-            self.app.rule_ops,
+            self.app.RULE_OPS,
             move_callback=self.move_rule,
             delete_callback=self.delete_rule,
             is_first=is_first,
@@ -207,5 +213,5 @@ class RuleTabsComponent(AppComponent):
         root_window = scroll_frame.winfo_toplevel()
 
         if platform.system() == "Linux":
-            root_window.bind_all("<Button-4>", scroll_frame._mouse_wheel_all, add=True)
-            root_window.bind_all("<Button-5>", scroll_frame._mouse_wheel_all, add=True)
+            root_window.bind_all("<Button-4>", scroll_frame._mouse_wheel_all, add=True)  # noqa: SLF001
+            root_window.bind_all("<Button-5>", scroll_frame._mouse_wheel_all, add=True)  # noqa: SLF001

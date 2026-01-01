@@ -1,13 +1,19 @@
+"""Filename Component."""
+
 import tkinter as tk
 from pathlib import Path
+from typing import override
 
 import customtkinter as ctk
 
-from df_metadata_customizer.ui_components.app_component import AppComponent
+from df_metadata_customizer.components.app_component import AppComponent
 
 
 class FilenameComponent(AppComponent):
-    def setup_ui(self):
+    """Filename editing component."""
+
+    @override
+    def setup_ui(self) -> None:
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(2, weight=0)
 
