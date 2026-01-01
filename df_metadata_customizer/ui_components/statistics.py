@@ -5,6 +5,21 @@ from df_metadata_customizer.ui_components.app_component import AppComponent
 
 
 class StatisticsComponent(AppComponent):
+    def initialize_state(self) -> None:
+        self.stats = {
+            "all_songs": 0,
+            "unique_ta": 0,
+            "unique_tac": 0,
+            "neuro_solos_unique": 0,
+            "neuro_solos_total": 0,
+            "evil_solos_unique": 0,
+            "evil_solos_total": 0,
+            "duets_unique": 0,
+            "duets_total": 0,
+            "other_unique": 0,
+            "other_total": 0,
+        }
+
     def setup_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
 
@@ -20,20 +35,6 @@ class StatisticsComponent(AppComponent):
 
         self.status_label = ctk.CTkLabel(self, text="All songs: 0 | Unique (T,A): 0", anchor="w")
         self.status_label.grid(row=0, column=1, sticky="e")
-
-        self.stats = {
-            "all_songs": 0,
-            "unique_ta": 0,
-            "unique_tac": 0,
-            "neuro_solos_unique": 0,
-            "neuro_solos_total": 0,
-            "evil_solos_unique": 0,
-            "evil_solos_total": 0,
-            "duets_unique": 0,
-            "duets_total": 0,
-            "other_unique": 0,
-            "other_total": 0,
-        }
 
     def calculate_statistics(self) -> None:
         """Calculate comprehensive statistics about the loaded songs."""

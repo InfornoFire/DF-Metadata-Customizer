@@ -5,7 +5,10 @@ from .navigation import NavigationComponent
 from .output_preview import OutputPreviewComponent
 from .preset import PresetComponent
 from .rule_tabs import RuleTabsComponent
+from .song_controls import SongControlsComponent
+from .sorting import SortingComponent
 from .statistics import StatisticsComponent
+from .tree import TreeComponent
 
 __all__ = [
     "AppComponent",
@@ -16,5 +19,8 @@ __all__ = [
     "PresetComponent",
     "PreviewComponent",
     "RuleTabsComponent",
+    "SongControlsComponent",
+    "SortingComponent",
     "StatisticsComponent",
+    "TreeComponent",
 ]

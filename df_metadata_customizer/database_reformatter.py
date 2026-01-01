@@ -6,7 +6,7 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, simpledialog
 from typing import TYPE_CHECKING, Final
 
 import customtkinter as ctk
@@ -26,9 +26,12 @@ from df_metadata_customizer.ui_components import (
     OutputPreviewComponent,
     PresetComponent,
     RuleTabsComponent,
+    SongControlsComponent,
+    SortingComponent,
     StatisticsComponent,
+    TreeComponent,
 )
-from df_metadata_customizer.widgets import RuleRow, SortRuleRow
+from df_metadata_customizer.widgets import RuleRow
 
 if TYPE_CHECKING:
     from df_metadata_customizer.song_metadata import SongMetadata
@@ -94,9 +97,7 @@ class DFApp(ctk.CTk):
         self.cover_cache = LRUImageCache(max_size=50)  # Optimized cache
         self.last_cover_request_time = 0.0  # Track last cover request time for throttling
 
-
         # Maximum number of allowed sort rules (including the primary rule)
-        self.max_sort_rules = 5
         self.max_rules_per_tab = 50
 
         # Build UI
@@ -115,7 +116,7 @@ class DFApp(ctk.CTk):
 
     def _build_ui(self) -> None:
         # Use a PanedWindow for draggable splitter
-        self.paned = tk.PanedWindow(self, orient="horizontal", sashrelief="raised", sashwidth=6)
+        self.paned = tk.PanedWindow(self, orient="horizontal", sashrelief="raised", sashwidth=6) # TODO: Convert to ttk.PanedWindow
         self.paned.pack(fill="both", expand=True, padx=8, pady=8)
 
         # Left (song list) frame
@@ -128,108 +129,16 @@ class DFApp(ctk.CTk):
         self.left_frame.grid_rowconfigure(4, weight=0)  # Bottom status row fixed
 
         # Top controls: folder select + search + select all
-        top_ctl = ctk.CTkFrame(self.left_frame, fg_color="transparent")
-        top_ctl.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 6))
-        top_ctl.grid_columnconfigure(1, weight=1)  # Give more weight to search
-
-        self.btn_select_folder = ctk.CTkButton(top_ctl, text="Select Folder", command=self.select_folder)
-        self.btn_select_folder.grid(row=0, column=0, padx=(0, 8))
-
-        self.search_var = tk.StringVar()
-        self.entry_search = ctk.CTkEntry(
-            top_ctl,
-            placeholder_text="Search title / artist / coverartist / disc / track / special / version=latest",
-            textvariable=self.search_var,
-        )
-        self.entry_search.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        self.entry_search.bind("<KeyRelease>", self.on_search_keyrelease)
-
-        self.select_all_var = tk.BooleanVar(value=False)
-        self.chk_select_all = ctk.CTkCheckBox(
-            top_ctl,
-            text="Select All",
-            variable=self.select_all_var,
-            command=self.on_select_all,
-        )
-        self.chk_select_all.grid(row=0, column=2, padx=(0, 0))
+        self.song_controls_component = SongControlsComponent(self.left_frame, self)
+        self.song_controls_component.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 6))
 
         # Sort controls
-        sort_frame = ctk.CTkFrame(self.left_frame, fg_color="transparent")
-        sort_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 4))
-        sort_frame.grid_columnconfigure(1, weight=1)
-
-        # Sort container for multiple sort rules
-        self.sort_container = ctk.CTkFrame(sort_frame, fg_color="transparent")
-        self.sort_container.grid(row=0, column=0, columnspan=4, sticky="ew", pady=2)
-        self.sort_container.grid_columnconfigure(1, weight=1)
-
-        # Add first sort rule (cannot be deleted)
-        self.sort_rules: list[SortRuleRow] = []
-        self.add_sort_rule(is_first=True)
-
-        # Add sort rule button
-        self.add_sort_btn = ctk.CTkButton(sort_frame, text="+ Add Sort", width=80, command=lambda: self.add_sort_rule())
-        self.add_sort_btn.grid(row=1, column=0, sticky="w", pady=(2, 0))
-
-        # Search info label (next to Add Sort)
-        self.search_info_label = ctk.CTkLabel(sort_frame, text="", anchor="w")
-        self.search_info_label.grid(row=1, column=1, sticky="w", padx=(12, 0))
+        self.sorting_component = SortingComponent(self.left_frame, self)
+        self.sorting_component.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 4))
 
         # Treeview song list
-        tree_frame = ctk.CTkFrame(self.left_frame)
-        tree_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(4, 4))
-        tree_frame.grid_rowconfigure(0, weight=1)
-        tree_frame.grid_columnconfigure(0, weight=1)
-
-        # Extended columns to show all JSON elements
-        self.tree = ttk.Treeview(tree_frame, columns=DFApp.COLUMN_ORDER, show="headings", selectmode="extended")
-
-        # Configure treeview style - will be updated by theme
-        self.style = ttk.Style()
-        self._update_treeview_style()
-
-        # Configure columns
-        column_configs = {
-            MetadataFields.UI_TITLE: ("Title", 280, "w"),
-            MetadataFields.UI_ARTIST: ("Artist", 275, "w"),
-            MetadataFields.UI_COVER_ARTIST: ("Cover Artist", 95, "w"),
-            MetadataFields.UI_VERSION: ("Version", 65, "center"),
-            MetadataFields.UI_DISC: ("Disc", 35, "center"),
-            MetadataFields.UI_TRACK: ("Track", 55, "center"),
-            MetadataFields.UI_DATE: ("Date", 85, "center"),
-            MetadataFields.UI_COMMENT: ("Comment", 80, "w"),
-            MetadataFields.UI_SPECIAL: ("Special", 60, "center"),
-            MetadataFields.UI_FILE: ("File", 120, "w"),
-        }
-
-        for col in DFApp.COLUMN_ORDER:
-            heading, width, anchor = column_configs[col]
-            self.tree.heading(col, text=heading)
-            # Disable automatic stretching so horizontal scrollbar appears
-            self.tree.column(col, width=width, anchor=anchor, stretch=False)
-
-        # Enable column reordering
-        self.tree.bind("<Button-1>", self.on_tree_click)
-        self.dragged_column = None
-        # Track header currently highlighted during drag (for visual feedback)
-        self._highlighted_column = None
-
-        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
-        # Double-click to play song
-        self.tree.bind("<Double-1>", self.on_tree_double_click)
-
-        # Vertical scrollbar
-        self.tree_scroll_v = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=self.tree_scroll_v.set)
-
-        # Horizontal scrollbar
-        self.tree_scroll_h = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(xscrollcommand=self.tree_scroll_h.set)
-
-        # Grid the tree and scrollbars
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        self.tree_scroll_v.grid(row=0, column=1, sticky="ns")
-        self.tree_scroll_h.grid(row=1, column=0, sticky="ew")
+        self.tree_component = TreeComponent(self.left_frame, self)
+        self.tree_component.grid(row=2, column=0, sticky="nsew", padx=8, pady=(4, 4))
 
         # Status panel - NEW: Simple button that shows popup
         self.statistics_component = StatisticsComponent(self.left_frame, self, fg_color="transparent")
@@ -283,129 +192,9 @@ class DFApp(ctk.CTk):
         # Initialize rule tab button states
         self.rule_tabs_component.update_rule_tab_buttons()
 
-    # -------------------------
-    # NEW: Multi-level Sorting Methods
-    # -------------------------
-    def add_sort_rule(self, *, is_first: bool = False) -> None:
-        """Add a new sort rule row."""
-        # Enforce maximum number of sort rules
-        if len(self.sort_rules) >= self.max_sort_rules:
-            with contextlib.suppress(Exception):
-                messagebox.showinfo("Sort limit", f"Maximum of {self.max_sort_rules} sort levels reached")
-            return
-
-        row = SortRuleRow(
-            self.sort_container,
-            move_callback=self.move_sort_rule,
-            delete_callback=self.delete_sort_rule,
-            is_first=is_first,
-        )
-        row.pack(fill="x", padx=0, pady=2)
-        self.sort_rules.append(row)
-
-        if is_first:
-            row.field_var.set(MetadataFields.UI_TITLE)
-        else:
-            row.field_var.set(MetadataFields.UI_ARTIST)
-
-        # Bind change events to refresh tree
-        row.field_menu.configure(command=lambda _val=None: self.refresh_tree())
-        row.order_menu.configure(command=lambda _val=None: self.refresh_tree())
-
-        # Update button visibility for all rules
-        self.update_sort_rule_buttons()
-
-        # Disable add button if we've reached the max
-        if hasattr(self, "add_sort_btn"):
-            self.add_sort_btn.configure(state="disabled" if len(self.sort_rules) >= self.max_sort_rules else "normal")
-
-    def move_sort_rule(self, widget: SortRuleRow, direction: int) -> None:
-        """Move a sort rule up or down."""
-        # Find current index; don't allow the primary (index 0) to be moved
-        try:
-            idx = self.sort_rules.index(widget)
-        except ValueError:
-            return
-
-        if idx == 0:
-            return  # primary rule cannot be moved
-
-        new_idx = idx + direction
-
-        # Disallow moves that go out of bounds or into the primary slot (0)
-        if new_idx < 1 or new_idx >= len(self.sort_rules):
-            return
-
-        # Perform the move
-        self.sort_rules.pop(idx)
-        self.sort_rules.insert(new_idx, widget)
-
-        # Repack and update UI
-        self.repack_sort_rules()
-        self.update_sort_rule_buttons()
-        self.refresh_tree()
-
-    def delete_sort_rule(self, widget: SortRuleRow) -> None:
-        """Delete a sort rule (except the first one)."""
-        try:
-            idx = self.sort_rules.index(widget)
-        except ValueError:
-            return
-
-        # Don't allow deleting the primary rule at index 0
-        if idx == 0:
-            return
-
-        # Remove the widget
-        self.sort_rules.pop(idx)
-        widget.destroy()
-
-        # Repack and refresh
-        self.repack_sort_rules()
-        self.update_sort_rule_buttons()
-        self.refresh_tree()
-
-    def repack_sort_rules(self) -> None:
-        """Repack all sort rules in current order."""
-        # Clear the container
-        for child in self.sort_container.winfo_children():
-            child.pack_forget()
-
-        # Repack in current order
-        for rule in self.sort_rules:
-            rule.pack(fill="x", padx=0, pady=2)
-        # Ensure is_first flag is kept in sync with position (only index 0 is primary)
-        for i, rule in enumerate(self.sort_rules):
-            rule.is_first = i == 0
-            try:
-                if rule.is_first:
-                    rule.sort_label.configure(text="Sort by:")
-                else:
-                    rule.sort_label.configure(text="then by:")
-            except Exception:
-                pass
-
-    def update_sort_rule_buttons(self) -> None:
-        """Update button visibility for sort rules."""
-        for i, rule in enumerate(self.sort_rules):
-            if hasattr(rule, "up_btn"):
-                # First rule (index 0) is always first and can't be moved up
-                # Rule at position 1 can't move up (would become first)
-                rule.up_btn.configure(state="normal" if i > 1 else "disabled")
-            if hasattr(rule, "down_btn"):
-                # Can't move down if it's the last rule or if moving down would make it first
-                rule.down_btn.configure(state="normal" if i < len(self.sort_rules) - 1 and i != 0 else "disabled")
-
-        # Also update Add button state according to max allowed rules
-        if hasattr(self, "add_sort_btn"):
-            with contextlib.suppress(Exception):
-                self.add_sort_btn.configure(
-                    state="disabled" if len(self.sort_rules) >= self.max_sort_rules else "normal",
-                )
-
     def on_tree_double_click(self, _event: tk.Event) -> None:
         """Play the selected song when double-clicked."""
-        sel = self.tree.selection()
+        sel = self.tree_component.tree.selection()
         if not sel:
             return
 
@@ -463,7 +252,7 @@ class DFApp(ctk.CTk):
         def on_data_loaded(*, success: bool) -> None:
             if not success or (self.progress_dialog and self.progress_dialog.cancelled):
                 self.lbl_file_info.configure(text="Loading cancelled")
-                self.btn_select_folder.configure(state="normal")
+                self.song_controls_component.btn_select_folder.configure(state="normal")
                 self.operation_in_progress = False
                 if self.progress_dialog:
                     self.progress_dialog.destroy()
@@ -474,11 +263,11 @@ class DFApp(ctk.CTk):
             df = self.file_manager.get_view_data(self.mp3_files)
 
             # Apply multi-level sorting using Polars
-            sorted_df = RuleManager.apply_multi_sort_polars(self.sort_rules, df)
+            sorted_df = RuleManager.apply_multi_sort_polars(self.sorting_component.sort_rules, df)
 
             # Clear tree first
-            for it in self.tree.get_children():
-                self.tree.delete(it)
+            for it in self.tree_component.tree.get_children():
+                self.tree_component.tree.delete(it)
 
             # Populate tree in batches for better performance
             self.visible_file_indices = []
@@ -494,7 +283,7 @@ class DFApp(ctk.CTk):
                     row = sorted_rows[i]
                     orig_idx = row["orig_index"]
 
-                    self.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
+                    self.tree_component.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
                     self.visible_file_indices.append(orig_idx)
 
                 # Update progress for tree population
@@ -510,12 +299,12 @@ class DFApp(ctk.CTk):
                     self.after(1, lambda: populate_batch(end_idx))
                 else:
                     # All data loaded
-                    if self.tree.get_children():
-                        self.tree.selection_set(self.tree.get_children()[0])
+                    if self.tree_component.tree.get_children():
+                        self.tree_component.tree.selection_set(self.tree_component.tree.get_children()[0])
                         self.on_tree_select()
 
                     self.lbl_file_info.configure(text=f"Loaded {len(self.mp3_files)} files")
-                    self.btn_select_folder.configure(state="normal")
+                    self.song_controls_component.btn_select_folder.configure(state="normal")
                     self.operation_in_progress = False
 
                     # Calculate statistics after loading
@@ -534,41 +323,6 @@ class DFApp(ctk.CTk):
             target=load_file_data_worker,
             daemon=True,
         ).start()
-
-    # -------------------------
-    # UPDATED: Theme methods to prevent freezing
-    # -------------------------
-    def _update_treeview_style(self) -> None:
-        """Update treeview style based on current theme."""
-        try:
-            if self.is_dark_mode:
-                # Dark theme
-                self.style.theme_use("default")
-                self.style.configure(
-                    "Treeview",
-                    background="#2b2b2b",
-                    foreground="white",
-                    fieldbackground="#2b2b2b",
-                    borderwidth=0,
-                )
-                self.style.configure("Treeview.Heading", background="#3b3b3b", foreground="white", relief="flat")
-                self.style.map("Treeview", background=[("selected", "#1f6aa5")])
-                self.style.map("Treeview.Heading", background=[("active", "#4b4b4b")])
-            else:
-                # Light theme
-                self.style.theme_use("default")
-                self.style.configure(
-                    "Treeview",
-                    background="white",
-                    foreground="black",
-                    fieldbackground="white",
-                    borderwidth=0,
-                )
-                self.style.configure("Treeview.Heading", background="#f0f0f0", foreground="black", relief="flat")
-                self.style.map("Treeview", background=[("selected", "#0078d7")])
-                self.style.map("Treeview.Heading", background=[("active", "#e0e0e0")])
-        except Exception as e:
-            print(f"Error updating treeview style: {e}")
 
     # Cover Image Functions
     def _safe_cover_display_update(self, text: str, *, clear_image: bool = False) -> None:
@@ -610,7 +364,7 @@ class DFApp(ctk.CTk):
         self._safe_cover_display_update("Loading cover...")
 
         # Load art when free
-        self.after_idle(self.load_cover_art, path)
+        threading.Thread(target=self.load_cover_art, args=(path,), daemon=True).start()
 
     def load_cover_art(self, path: str) -> None:
         """Request loading of cover art for the given file path."""
@@ -665,13 +419,13 @@ class DFApp(ctk.CTk):
             ctk.set_appearance_mode(self.current_theme)
 
             # Update all theme-dependent elements with error handling
-            self._update_treeview_style()
+            self.tree_component.update_treeview_style()
             self.json_edit_component.update_json_text_style()
             self.output_preview_component.update_style()
             self.preset_component.update_theme_button()
 
             # Refresh the tree to apply new styles
-            if self.tree.get_children():
+            if self.tree_component.tree.get_children():
                 self.after(0, self.refresh_tree)
 
             # Always load cover after theme change
@@ -695,20 +449,20 @@ class DFApp(ctk.CTk):
 
     def on_tree_click(self, event: tk.Event) -> None:
         """Handle column header clicks for reordering."""
-        region = self.tree.identify_region(event.x, event.y)
+        region = self.tree_component.tree.identify_region(event.x, event.y)
         if region == "heading":
-            column = self.tree.identify_column(event.x)
+            column = self.tree_component.tree.identify_column(event.x)
             column_index = int(column.replace("#", "")) - 1
             if 0 <= column_index < len(DFApp.COLUMN_ORDER):
-                self.dragged_column = DFApp.COLUMN_ORDER[column_index]
-                self.tree.bind("<B1-Motion>", self.on_column_drag)
-                self.tree.bind("<ButtonRelease-1>", self.on_column_drop)
+                self.tree_component.dragged_column = DFApp.COLUMN_ORDER[column_index]
+                self.tree_component.tree.bind("<B1-Motion>", self.on_column_drag)
+                self.tree_component.tree.bind("<ButtonRelease-1>", self.on_column_drop)
 
     def on_column_drag(self, event: tk.Event) -> None:
         """Visual feedback during column drag."""
-        region = self.tree.identify_region(event.x, event.y)
+        region = self.tree_component.tree.identify_region(event.x, event.y)
         if region == "heading":
-            column = self.tree.identify_column(event.x)
+            column = self.tree_component.tree.identify_column(event.x)
             try:
                 column_index = int(column.replace("#", "")) - 1
             except Exception:
@@ -717,33 +471,33 @@ class DFApp(ctk.CTk):
             if column_index is not None and 0 <= column_index < len(DFApp.COLUMN_ORDER):
                 target = DFApp.COLUMN_ORDER[column_index]
                 # Only update if changed
-                if target != self._highlighted_column:
+                if target != self.tree_component.highlighted_column:
                     # clear previous
-                    if self._highlighted_column:
+                    if self.tree_component.highlighted_column:
                         with contextlib.suppress(Exception):
-                            self.tree.heading(self._highlighted_column, background="")
+                            self.tree_component.tree.heading(self.tree_component.highlighted_column, background="")
                     # set new highlight (color depends on theme)
                     try:
                         hl = "#4b94d6" if (self.current_theme == "Light") else "#3b6ea0"
-                        self.tree.heading(target, background=hl)
-                        self._highlighted_column = target
+                        self.tree_component.tree.heading(target, background=hl)
+                        self.tree_component.highlighted_column = target
                     except Exception:
-                        self._highlighted_column = None
+                        self.tree_component.highlighted_column = None
 
     def on_column_drop(self, event: tk.Event) -> None:
         """Handle column reordering when dropped."""
-        self.tree.unbind("<B1-Motion>")
-        self.tree.unbind("<ButtonRelease-1>")
+        self.tree_component.tree.unbind("<B1-Motion>")
+        self.tree_component.tree.unbind("<ButtonRelease-1>")
         # clear any header highlight
-        if self._highlighted_column:
+        if self.tree_component.highlighted_column:
             with contextlib.suppress(Exception):
-                self.tree.heading(self._highlighted_column, background="")
-            self._highlighted_column = None
+                self.tree_component.tree.heading(self.tree_component.highlighted_column, background="")
+            self.tree_component.highlighted_column = None
 
-        if self.dragged_column:
-            region = self.tree.identify_region(event.x, event.y)
+        if self.tree_component.dragged_column:
+            region = self.tree_component.tree.identify_region(event.x, event.y)
             if region == "heading":
-                column = self.tree.identify_column(event.x)
+                column = self.tree_component.tree.identify_column(event.x)
                 try:
                     drop_index = int(column.replace("#", "")) - 1
                 except Exception:
@@ -751,30 +505,30 @@ class DFApp(ctk.CTk):
 
                 if drop_index is not None and 0 <= drop_index < len(DFApp.COLUMN_ORDER):
                     # Reorder the columns
-                    current_index = DFApp.COLUMN_ORDER.index(self.dragged_column)
+                    current_index = DFApp.COLUMN_ORDER.index(self.tree_component.dragged_column)
                     if current_index != drop_index:
                         DFApp.COLUMN_ORDER.pop(current_index)
-                        DFApp.COLUMN_ORDER.insert(drop_index, self.dragged_column)
+                        DFApp.COLUMN_ORDER.insert(drop_index, self.tree_component.dragged_column)
                         self.rebuild_tree_columns()
 
-            self.dragged_column = None
+            self.tree_component.dragged_column = None
 
     def rebuild_tree_columns(self) -> None:
         """Rebuild tree columns with new order."""
         # Save current selection and scroll position
-        selection = self.tree.selection()
-        scroll_v = self.tree.yview()
-        scroll_h = self.tree.xview()
+        selection = self.tree_component.tree.selection()
+        scroll_v = self.tree_component.tree.yview()
+        scroll_h = self.tree_component.tree.xview()
         # Reconfigure columns
         # Remember previous column order and sizes so we can remap values
-        prev_columns = list(self.tree["columns"])
+        prev_columns = list(self.tree_component.tree["columns"])
 
         # Capture current widths and stretch settings to preserve them
         prev_col_width = {}
         prev_col_stretch = {}
         for col in prev_columns:
             try:
-                info = self.tree.column(col)
+                info = self.tree_component.tree.column(col)
                 prev_col_width[col] = int(info.get("width", info.get("minwidth", 100)))
                 prev_col_stretch[col] = bool(info.get("stretch", False))
             except Exception:
@@ -783,7 +537,7 @@ class DFApp(ctk.CTk):
 
         for col in prev_columns:
             with contextlib.suppress(Exception):
-                self.tree.heading(col, text="")
+                self.tree_component.tree.heading(col, text="")
 
         column_configs = {
             MetadataFields.UI_TITLE: ("Title", 180, "w"),
@@ -800,7 +554,7 @@ class DFApp(ctk.CTk):
 
         # Recreate columns in new order
         new_columns = list(DFApp.COLUMN_ORDER)
-        self.tree["columns"] = new_columns
+        self.tree_component.tree["columns"] = new_columns
 
         for col in new_columns:
             heading, fallback_width, anchor = column_configs.get(col, (col, 100, "w"))
@@ -808,9 +562,9 @@ class DFApp(ctk.CTk):
             width = prev_col_width.get(col, fallback_width)
             stretch = prev_col_stretch.get(col, False)
             try:
-                self.tree.heading(col, text=heading)
+                self.tree_component.tree.heading(col, text=heading)
                 # Reapply preserved width/stretch to avoid reset after reorder
-                self.tree.column(col, width=width, anchor=anchor, stretch=stretch)
+                self.tree_component.tree.column(col, width=width, anchor=anchor, stretch=stretch)
             except Exception:
                 pass
 
@@ -818,8 +572,8 @@ class DFApp(ctk.CTk):
         try:
             # Build mapping from field name to index in previous values
             prev_index = {name: idx for idx, name in enumerate(prev_columns)}
-            for iid in self.tree.get_children():
-                vals = list(self.tree.item(iid, "values") or [])
+            for iid in self.tree_component.tree.get_children():
+                vals = list(self.tree_component.tree.item(iid, "values") or [])
                 # create dict of previous values
                 vals_map = {}
                 for name, idx in prev_index.items():
@@ -830,17 +584,17 @@ class DFApp(ctk.CTk):
 
                 # Build new values tuple according to new_columns order
                 new_vals = [vals_map.get(name, "") for name in new_columns]
-                self.tree.item(iid, values=tuple(new_vals))
+                self.tree_component.tree.item(iid, values=tuple(new_vals))
         except Exception:
             pass
 
         # Restore selection and scroll position
         if selection:
             with contextlib.suppress(Exception):
-                self.tree.selection_set(selection)
+                self.tree_component.tree.selection_set(selection)
         try:
-            self.tree.yview_moveto(scroll_v[0])
-            self.tree.xview_moveto(scroll_h[0])
+            self.tree_component.tree.yview_moveto(scroll_v[0])
+            self.tree_component.tree.xview_moveto(scroll_h[0])
         except Exception:
             pass
 
@@ -853,10 +607,10 @@ class DFApp(ctk.CTk):
             data = {}
             # sash ratio
             try:
-                sash_pos = self.paned.sashpos(0)
+                sash_pos = self.paned.sash_coord(0)[0]  # Get the x position of the sash
                 total = self.paned.winfo_width() or 1
                 data["sash_ratio"] = float(sash_pos) / float(total)
-            except Exception:
+            except (AttributeError, IndexError, TypeError):
                 data["sash_ratio"] = None
 
             # column order and widths
@@ -865,7 +619,7 @@ class DFApp(ctk.CTk):
                 widths = {}
                 for col in DFApp.COLUMN_ORDER:
                     try:
-                        info = self.tree.column(col)
+                        info = self.tree_component.tree.column(col)
                         widths[col] = int(info.get("width", 0))
                     except Exception:
                         widths[col] = 0
@@ -876,7 +630,7 @@ class DFApp(ctk.CTk):
 
             # sort rules
             try:
-                data["sort_rules"] = RuleManager.get_sort_rules(self.sort_rules)
+                data["sort_rules"] = RuleManager.get_sort_rules(self.sorting_component.sort_rules)
             except Exception:
                 data["sort_rules"] = []
 
@@ -898,12 +652,15 @@ class DFApp(ctk.CTk):
             return
 
         # theme
-        with contextlib.suppress(Exception):
+        try:
             th = data.get("theme")
             if th:
                 self.current_theme = th
                 self.toggle_theme(theme=th)
+        except Exception as e:
+            print(f"Error loading theme setting: {e}")
 
+        try:
             # last folder
             self.last_folder_opened = data.get("last_folder_opened")
             self.auto_reopen_last_folder = data.get("auto_reopen_last_folder", None)
@@ -921,8 +678,11 @@ class DFApp(ctk.CTk):
                 # apply widths
                 for c, w in (col_widths or {}).items():
                     with contextlib.suppress(Exception):
-                        self.tree.column(c, width=int(w))
+                        self.tree_component.tree.column(c, width=int(w))
+        except Exception as e:
+            print(f"Error loading column settings: {e}")
 
+        try:
             # sort rules
             sort_rules = data.get("sort_rules") or []
             if isinstance(sort_rules, list) and sort_rules:
@@ -932,14 +692,17 @@ class DFApp(ctk.CTk):
                 # set values for existing rules and add extras if needed
                 for i, r in enumerate(sort_rules):
                     with contextlib.suppress(Exception):
-                        if i < len(self.sort_rules):
-                            self.sort_rules[i].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
-                            self.sort_rules[i].order_var.set(r.get("order", "asc"))
+                        if i < len(self.sorting_component.sort_rules):
+                            self.sorting_component.sort_rules[i].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
+                            self.sorting_component.sort_rules[i].order_var.set(r.get("order", "asc"))
                         else:
-                            self.add_sort_rule(is_first=False)
-                            self.sort_rules[-1].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
-                            self.sort_rules[-1].order_var.set(r.get("order", "asc"))
+                            self.sorting_component.add_sort_rule(is_first=False)
+                            self.sorting_component.sort_rules[-1].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
+                            self.sorting_component.sort_rules[-1].order_var.set(r.get("order", "asc"))
+        except Exception as e:
+            print(f"Error loading sort rules: {e}")
 
+        try:
             # sash ratio - apply after window is laid out
             sash_ratio = data.get("sash_ratio")
             if sash_ratio is not None:
@@ -953,12 +716,14 @@ class DFApp(ctk.CTk):
                                 self.paned.sash_place(0, pos, 0)
                             except Exception:
                                 with contextlib.suppress(Exception):
-                                    self.paned.sashpos(0)
+                                    self.paned.sash_coord(0)[0]
                         # try again shortly if not yet sized
                         elif attempts < 10:
                             self.after(150, lambda: apply_ratio(attempts + 1))
 
                 self.after(200, lambda: apply_ratio(0))
+        except Exception as e:
+            print(f"Error loading sash ratio: {e}")
 
     def check_last_folder(self) -> None:
         """Check if there is a last opened folder and prompt the user to load it."""
@@ -1036,7 +801,7 @@ class DFApp(ctk.CTk):
         values = tuple(field_values[col] for col in DFApp.COLUMN_ORDER)
 
         # Update the treeview item
-        self.tree.item(str(index), values=values)
+        self.tree_component.tree.item(str(index), values=values)
 
     # -------------------------
     # Filename Editing Functions
@@ -1131,7 +896,7 @@ class DFApp(ctk.CTk):
         self.last_folder_opened = folder
 
         self.operation_in_progress = True
-        self.btn_select_folder.configure(state="disabled")
+        self.song_controls_component.btn_select_folder.configure(state="disabled")
 
         # Clear cache when loading new folder
         self.file_manager.clear()
@@ -1177,7 +942,7 @@ class DFApp(ctk.CTk):
         def on_scan_complete(files: list[str] | None) -> None:
             if files is None:  # Cancelled
                 self.lbl_file_info.configure(text="Scan cancelled")
-                self.btn_select_folder.configure(state="normal")
+                self.song_controls_component.btn_select_folder.configure(state="normal")
                 self.operation_in_progress = False
 
                 if self.progress_dialog:
@@ -1189,7 +954,7 @@ class DFApp(ctk.CTk):
             if not self.mp3_files:
                 messagebox.showwarning("No files", "No mp3 files found in that folder")
                 self.lbl_file_info.configure(text="No files")
-                self.btn_select_folder.configure(state="normal")
+                self.song_controls_component.btn_select_folder.configure(state="normal")
                 self.operation_in_progress = False
                 if self.progress_dialog:
                     self.progress_dialog.destroy()
@@ -1209,7 +974,7 @@ class DFApp(ctk.CTk):
 
     def refresh_tree(self) -> None:
         """Refresh tree with search filtering and multi-sort. Supports structured filters including version=latest."""
-        q_raw = self.search_var.get().strip()
+        q_raw = self.song_controls_component.search_var.get().strip()
 
         # Get view data from FileManager
         df = self.file_manager.get_view_data(self.mp3_files)
@@ -1219,18 +984,18 @@ class DFApp(ctk.CTk):
         filtered_df = RuleManager.apply_search_filter(df, filters, free_terms)
 
         # Apply multi-level sort
-        sorted_df = RuleManager.apply_multi_sort_polars(self.sort_rules, filtered_df)
+        sorted_df = RuleManager.apply_multi_sort_polars(self.sorting_component.sort_rules, filtered_df)
 
         # Clear tree
-        for it in self.tree.get_children():
-            self.tree.delete(it)
+        for it in self.tree_component.tree.get_children():
+            self.tree_component.tree.delete(it)
         self.visible_file_indices = []
 
         # Insert sorted matches into the tree
         sorted_rows = sorted_df.to_dicts()
         for row in sorted_rows:
             orig_idx = row["orig_index"]
-            self.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
+            self.tree_component.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
             self.visible_file_indices.append(orig_idx)
 
         # Update search info label with count and filter summary
@@ -1238,14 +1003,14 @@ class DFApp(ctk.CTk):
         if filters or free_terms:
             parts = [f"{f['field']} {f['op']} {f['value']}" for f in filters] + [f"'{t}'" for t in free_terms]
             info += " | " + ", ".join(parts)
-        self.search_info_label.configure(text=info)
+        self.sorting_component.search_info_label.configure(text=info)
 
         # Update statistics for filtered results
         self.statistics_component.calculate_statistics()
 
     def on_tree_select(self, _event: tk.Event | None = None) -> None:
         """Handle tree selection change."""
-        sel = self.tree.selection()
+        sel = self.tree_component.tree.selection()
         # Update selection count
         self.lbl_selection_info.configure(text=f"{len(sel)} song(s) selected")
 
@@ -1321,7 +1086,7 @@ class DFApp(ctk.CTk):
 
         # Get previous file index from visible list
         prev_index = self.visible_file_indices[current_visible_index - 1]
-        self.tree.selection_set(str(prev_index))
+        self.tree_component.tree.selection_set(str(prev_index))
         self.current_index = prev_index
         self.load_current()
 
@@ -1342,20 +1107,20 @@ class DFApp(ctk.CTk):
 
         # Get next file index from visible list
         next_index = self.visible_file_indices[current_visible_index + 1]
-        self.tree.selection_set(str(next_index))
+        self.tree_component.tree.selection_set(str(next_index))
         self.current_index = next_index
         self.load_current()
 
     def on_select_all(self) -> None:
         """Handle select all checkbox toggle."""
-        sel = self.select_all_var.get()
+        sel = self.song_controls_component.select_all_var.get()
         if sel:
             # select all visible
-            self.tree.selection_set(self.tree.get_children())
+            self.tree_component.tree.selection_set(self.tree_component.tree.get_children())
         else:
-            self.tree.selection_remove(self.tree.get_children())
+            self.tree_component.tree.selection_remove(self.tree_component.tree.get_children())
         # Update selection count
-        self.lbl_selection_info.configure(text=f"{len(self.tree.selection())} song(s) selected")
+        self.lbl_selection_info.configure(text=f"{len(self.tree_component.tree.selection())} song(s) selected")
 
     # -------------------------
     # Rule evaluation
@@ -1386,7 +1151,7 @@ class DFApp(ctk.CTk):
             messagebox.showinfo("Operation in progress", "Please wait for the current operation to complete.")
             return
 
-        sel = self.tree.selection()
+        sel = self.tree_component.tree.selection()
         if not sel:
             messagebox.showwarning("No selection", "Select rows in the song list first")
             return
@@ -1516,7 +1281,7 @@ class DFApp(ctk.CTk):
             return
 
         # Select all files for processing
-        self.tree.selection_set(self.tree.get_children())
+        self.tree_component.tree.selection_set(self.tree_component.tree.get_children())
         self.apply_to_selected()
 
     # -------------------------

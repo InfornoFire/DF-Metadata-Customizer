@@ -10,6 +10,9 @@ from df_metadata_customizer.widgets import RuleRow
 
 
 class RuleTabsComponent(AppComponent):
+    def initialize_state(self):
+        self.rule_containers: dict[str, ctk.CTkFrame]  = {}
+
     def setup_ui(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -17,7 +20,6 @@ class RuleTabsComponent(AppComponent):
         self.tabview = ctk.CTkTabview(self)
         self.tabview.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
 
-        self.rule_containers: dict[str, ctk.CTkFrame]  = {}
         for name in ("Title", "Artist", "Album"):
             tab = self.tabview.add(name)
             tab.grid_columnconfigure(0, weight=1)
