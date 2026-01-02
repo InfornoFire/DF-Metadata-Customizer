@@ -1,9 +1,13 @@
 """Tree View Component."""
 
-from tkinter import ttk
+import contextlib
+import tkinter as tk
+from tkinter import messagebox, ttk
 from typing import override
 
+from df_metadata_customizer import mp3_utils
 from df_metadata_customizer.components.app_component import AppComponent
+from df_metadata_customizer.rule_manager import RuleManager
 from df_metadata_customizer.song_metadata import MetadataFields
 
 
@@ -15,6 +19,20 @@ class TreeComponent(AppComponent):
         self.dragged_column = None
         self.highlighted_column = None
 
+        self.column_order = [
+            MetadataFields.UI_TITLE,
+            MetadataFields.UI_ARTIST,
+            MetadataFields.UI_COVER_ARTIST,
+            MetadataFields.UI_VERSION,
+            MetadataFields.UI_DISC,
+            MetadataFields.UI_TRACK,
+            MetadataFields.UI_DATE,
+            MetadataFields.UI_COMMENT,
+            MetadataFields.UI_SPECIAL,
+            MetadataFields.UI_FILE,
+        ]
+
+
     @override
     def setup_ui(self) -> None:
         self.grid_rowconfigure(0, weight=1)
@@ -23,7 +41,7 @@ class TreeComponent(AppComponent):
         # Extended columns to show all JSON elements
         self.tree = ttk.Treeview(
             self,
-            columns=self.app.COLUMN_ORDER,
+            columns=self.column_order,
             show="headings",
             selectmode="extended",
         )
@@ -46,18 +64,18 @@ class TreeComponent(AppComponent):
             MetadataFields.UI_FILE: ("File", 120, "w"),
         }
 
-        for col in self.app.COLUMN_ORDER:
+        for col in self.column_order:
             heading, width, anchor = column_configs[col]
             self.tree.heading(col, text=heading)
             # Disable automatic stretching so horizontal scrollbar appears
             self.tree.column(col, width=width, anchor=anchor, stretch=False)
 
         # Enable column reordering
-        self.tree.bind("<Button-1>", self.app.on_tree_click)
+        self.tree.bind("<Button-1>", self.on_tree_click)
 
         self.tree.bind("<<TreeviewSelect>>", self.app.on_tree_select)
         # Double-click to play song
-        self.tree.bind("<Double-1>", self.app.on_tree_double_click)
+        self.tree.bind("<Double-1>", self.on_tree_double_click)
 
         # Vertical scrollbar
         self.tree_scroll_v = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
@@ -104,3 +122,188 @@ class TreeComponent(AppComponent):
     @override
     def register_events(self) -> None:
         self.app.bind("<<TreeComponent:RefreshTree>>", self.app.refresh_tree)
+
+    def on_tree_click(self, event: tk.Event) -> None:
+        """Handle column header clicks for reordering."""
+        region = self.tree.identify_region(event.x, event.y)
+        if region == "heading":
+            column = self.tree.identify_column(event.x)
+            column_index = int(column.replace("#", "")) - 1
+            if 0 <= column_index < len(self.column_order):
+                self.dragged_column = self.column_order[column_index]
+                self.tree.bind("<B1-Motion>", self.on_column_drag)
+                self.tree.bind("<ButtonRelease-1>", self.on_column_drop)
+
+    def on_tree_double_click(self, _event: tk.Event) -> None:
+        """Play the selected song when double-clicked."""
+        sel = self.tree.selection()
+        if not sel:
+            return
+
+        iid = sel[0]
+        try:
+            idx = int(iid)
+        except Exception:
+            return
+
+        if idx < 0 or idx >= len(self.app.mp3_files):
+            return
+
+        try:
+            if not mp3_utils.play_song(self.app.mp3_files[idx]):
+                mp3_utils.show_audio_player_instructions()
+        except Exception as e:
+            messagebox.showerror("Playback Error", f"Could not play file:\n{e!s}")
+
+    def on_column_drag(self, event: tk.Event) -> None:
+        """Visual feedback during column drag."""
+        region = self.tree.identify_region(event.x, event.y)
+        if region == "heading":
+            column = self.tree.identify_column(event.x)
+            try:
+                column_index = int(column.replace("#", "")) - 1
+            except Exception:
+                column_index = None
+
+            if column_index is not None and 0 <= column_index < len(self.column_order):
+                target = self.column_order[column_index]
+                # Only update if changed
+                if target != self.highlighted_column:
+                    # clear previous
+                    if self.highlighted_column:
+                        with contextlib.suppress(Exception):
+                            self.tree.heading(self.highlighted_column, background="")
+                    # set new highlight (color depends on theme)
+                    try:
+                        hl = "#4b94d6" if (self.app.current_theme == "Light") else "#3b6ea0"
+                        self.tree.heading(target, background=hl)
+                        self.highlighted_column = target
+                    except Exception:
+                        self.highlighted_column = None
+
+    def on_column_drop(self, event: tk.Event) -> None:
+        """Handle column reordering when dropped."""
+        self.tree.unbind("<B1-Motion>")
+        self.tree.unbind("<ButtonRelease-1>")
+        # clear any header highlight
+        if self.highlighted_column:
+            with contextlib.suppress(Exception):
+                self.tree.heading(self.highlighted_column, background="")
+            self.highlighted_column = None
+
+        if self.dragged_column:
+            region = self.tree.identify_region(event.x, event.y)
+            if region == "heading":
+                column = self.tree.identify_column(event.x)
+                try:
+                    drop_index = int(column.replace("#", "")) - 1
+                except Exception:
+                    drop_index = None
+
+                if drop_index is not None and 0 <= drop_index < len(self.column_order):
+                    # Reorder the columns
+                    current_index = self.column_order.index(self.dragged_column)
+                    if current_index != drop_index:
+                        self.column_order.pop(current_index)
+                        self.column_order.insert(drop_index, self.dragged_column)
+                        self.rebuild_tree_columns()
+
+            self.dragged_column = None
+
+    def rebuild_tree_columns(self) -> None:
+        """Rebuild tree columns with new order."""
+        # Save current selection and scroll position
+        selection = self.tree.selection()
+        scroll_v = self.tree.yview()
+        scroll_h = self.tree.xview()
+        # Reconfigure columns
+        # Remember previous column order and sizes so we can remap values
+        prev_columns = list(self.tree["columns"])
+
+        # Capture current widths and stretch settings to preserve them
+        prev_col_width = {}
+        prev_col_stretch = {}
+        for col in prev_columns:
+            try:
+                info = self.tree.column(col)
+                prev_col_width[col] = int(info.get("width", info.get("minwidth", 100)))
+                prev_col_stretch[col] = bool(info.get("stretch", False))
+            except Exception:
+                prev_col_width[col] = 100
+                prev_col_stretch[col] = False
+
+        for col in prev_columns:
+            with contextlib.suppress(Exception):
+                self.tree.heading(col, text="")
+
+        column_configs = {
+            MetadataFields.UI_TITLE: ("Title", 180, "w"),
+            MetadataFields.UI_ARTIST: ("Artist", 100, "w"),
+            MetadataFields.UI_COVER_ARTIST: ("Cover Artist", 100, "w"),
+            MetadataFields.UI_VERSION: ("Version", 70, "center"),
+            MetadataFields.UI_DISC: ("Disc", 40, "center"),
+            MetadataFields.UI_TRACK: ("Track", 40, "center"),
+            MetadataFields.UI_DATE: ("Date", 70, "center"),
+            MetadataFields.UI_COMMENT: ("Comment", 120, "w"),
+            MetadataFields.UI_SPECIAL: ("Special", 60, "center"),
+            MetadataFields.UI_FILE: ("File", 120, "w"),
+        }
+
+        # Recreate columns in new order
+        new_columns = list(self.column_order)
+        self.tree["columns"] = new_columns
+
+        for col in new_columns:
+            heading, fallback_width, anchor = column_configs.get(col, (col, 100, "w"))
+            # prefer previous width if available, else fallback
+            width = prev_col_width.get(col, fallback_width)
+            stretch = prev_col_stretch.get(col, False)
+            try:
+                self.tree.heading(col, text=heading)
+                # Reapply preserved width/stretch to avoid reset after reorder
+                self.tree.column(col, width=width, anchor=anchor, stretch=stretch)
+            except Exception:
+                pass
+
+        # Remap existing item values from prev_columns -> new_columns
+        try:
+            # Build mapping from field name to index in previous values
+            prev_index = {name: idx for idx, name in enumerate(prev_columns)}
+            for iid in self.tree.get_children():
+                vals = list(self.tree.item(iid, "values") or [])
+                # create dict of previous values
+                vals_map = {}
+                for name, idx in prev_index.items():
+                    try:
+                        vals_map[name] = vals[idx]
+                    except Exception:
+                        vals_map[name] = ""
+
+                # Build new values tuple according to new_columns order
+                new_vals = [vals_map.get(name, "") for name in new_columns]
+                self.tree.item(iid, values=tuple(new_vals))
+        except Exception:
+            pass
+
+        # Restore selection and scroll position
+        if selection:
+            with contextlib.suppress(Exception):
+                self.tree.selection_set(selection)
+        try:
+            self.tree.yview_moveto(scroll_v[0])
+            self.tree.xview_moveto(scroll_h[0])
+        except Exception:
+            pass
+
+    def get_row_values(self, row: dict) -> tuple:
+        """Extract and format values for treeview columns from a data row."""
+        values = []
+        for col in self.column_order:
+            data_key = RuleManager.COL_MAP.get(col)
+            if col == MetadataFields.UI_VERSION:
+                v = row.get(MetadataFields.VERSION, 0.0)
+                val = str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
+            else:
+                val = row.get(data_key, "") if data_key else ""
+            values.append(str(val))
+        return tuple(values)

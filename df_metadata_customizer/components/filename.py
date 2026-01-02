@@ -32,6 +32,22 @@ class FilenameComponent(AppComponent):
         )
         self.filename_save_btn.grid(row=0, column=2, padx=(0, 6), pady=(6, 2))
 
+    @override
+    def register_events(self) -> None:
+        self.app.bind("<<FilenameComponent:UpdateFilename>>", self.on_update_filename_event)
+
+    def on_update_filename_event(self, _event: tk.Event | None = None) -> None:
+        """Update filename entry when event is triggered."""
+        if self.app.current_index is not None and self.app.mp3_files:
+            path = self.app.mp3_files[self.app.current_index]
+            filename = Path(path).name
+            self.update_filename(filename)
+
+    def update_filename(self, filename: str) -> None:
+        """Update the filename entry field."""
+        self.filename_var.set(filename)
+        self.filename_save_btn.configure(state="disabled")
+
     def on_filename_changed(self, _event: tk.Event | None = None) -> None:
         """Enable/disable rename button based on filename changes."""
         if self.app.current_index is None:

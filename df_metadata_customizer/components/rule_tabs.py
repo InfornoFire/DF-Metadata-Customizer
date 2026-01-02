@@ -100,7 +100,7 @@ class RuleTabsComponent(AppComponent):
         self._setup_scroll_events(container)
 
         # default template suggestions based on container tab
-        parent_tab = self.app._container_to_tab(container)
+        parent_tab = self.container_to_tab(container)
         if parent_tab == "title":
             row.template_entry.insert(0, f"{{{MetadataFields.COVER_ARTIST}}} - {{{MetadataFields.TITLE}}}")
         elif parent_tab == "artist":
@@ -119,7 +119,7 @@ class RuleTabsComponent(AppComponent):
         row.template_entry.bind("<KeyRelease>", lambda _e: self.app.output_preview_component.update_preview())
 
         # Update button states for all rules in this container
-        self.app.update_rule_button_states(container)
+        self.update_rule_button_states(container)
 
         # Update button states after adding
         self.update_rule_tab_buttons()
@@ -172,7 +172,7 @@ class RuleTabsComponent(AppComponent):
         widget.destroy()
 
         # Update button states for remaining rules
-        self.after(0, lambda: self.app.update_rule_button_states(container))
+        self.after(0, lambda: self.update_rule_button_states(container))
 
         # Rebind scroll events after deletion
         self._setup_scroll_events(container)
@@ -215,3 +215,19 @@ class RuleTabsComponent(AppComponent):
         if platform.system() == "Linux":
             root_window.bind_all("<Button-4>", scroll_frame._mouse_wheel_all, add=True)  # noqa: SLF001
             root_window.bind_all("<Button-5>", scroll_frame._mouse_wheel_all, add=True)  # noqa: SLF001
+
+    def container_to_tab(self, container: ctk.CTkFrame) -> str:
+        """Get tab name from container widget."""
+        for tab_name, cont in self.rule_containers.items():
+            if cont == container:
+                return tab_name
+        return "title"
+
+    def update_rule_button_states(self, container: ctk.CTkFrame) -> None:
+        """Update button states for rules in a container."""
+        slaves = container.pack_slaves()
+        children = [w for w in slaves if isinstance(w, RuleRow)]
+
+        for i, child in enumerate(children):
+            child.set_first(is_first=i == 0)
+            child.set_button_states(is_top=i == 0, is_bottom=i == len(children) - 1)

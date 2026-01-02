@@ -9,7 +9,10 @@ if TYPE_CHECKING:
 
 
 class AppComponent(ctk.CTkFrame):
-    """Base class for UI components that are part of the DFApp."""
+    """Base class for UI components that are part of the DFApp.
+
+    Should not contain functions that depend on other components directly.
+    """
 
     def __init__(self, parent: ctk.CTkBaseClass, app: "DFApp", **kwargs: dict) -> None:
         """Set up the AppComponent."""

@@ -1,7 +1,6 @@
 """Database Reformatter Application - Main Window and Logic."""
 
 import contextlib
-import json
 import threading
 import time
 import tkinter as tk
@@ -41,20 +40,11 @@ ctk.set_default_color_theme("dark-blue")
 
 
 class DFApp(ctk.CTk):
-    """Main application window for Database Reformatter."""
+    """Main application window for Database Reformatter.
 
-    COLUMN_ORDER: Final = [
-        MetadataFields.UI_TITLE,
-        MetadataFields.UI_ARTIST,
-        MetadataFields.UI_COVER_ARTIST,
-        MetadataFields.UI_VERSION,
-        MetadataFields.UI_DISC,
-        MetadataFields.UI_TRACK,
-        MetadataFields.UI_DATE,
-        MetadataFields.UI_COMMENT,
-        MetadataFields.UI_SPECIAL,
-        MetadataFields.UI_FILE,
-    ]
+    Separated into components for modularity.
+    Logic between multiple separate components should be handled here.
+    """
 
     RULE_OPS: Final = [
         "is",
@@ -116,7 +106,12 @@ class DFApp(ctk.CTk):
 
     def _build_ui(self) -> None:
         # Use a PanedWindow for draggable splitter
-        self.paned = tk.PanedWindow(self, orient="horizontal", sashrelief="raised", sashwidth=6) # TODO: Convert to ttk.PanedWindow
+        self.paned = tk.PanedWindow(
+            self,
+            orient="horizontal",
+            sashrelief="raised",
+            sashwidth=6,
+        )  # TODO: Convert to ttk.PanedWindow
         self.paned.pack(fill="both", expand=True, padx=8, pady=8)
 
         # Left (song list) frame
@@ -192,27 +187,6 @@ class DFApp(ctk.CTk):
         # Initialize rule tab button states
         self.rule_tabs_component.update_rule_tab_buttons()
 
-    def on_tree_double_click(self, _event: tk.Event) -> None:
-        """Play the selected song when double-clicked."""
-        sel = self.tree_component.tree.selection()
-        if not sel:
-            return
-
-        iid = sel[0]
-        try:
-            idx = int(iid)
-        except Exception:
-            return
-
-        if idx < 0 or idx >= len(self.mp3_files):
-            return
-
-        try:
-            if not mp3_utils.play_song(self.mp3_files[idx]):
-                mp3_utils.show_audio_player_instructions()
-        except Exception as e:
-            messagebox.showerror("Playback Error", f"Could not play file:\n{e!s}")
-
     # -------------------------
     # FIXED: Tree population with correct column order
     # -------------------------
@@ -283,7 +257,12 @@ class DFApp(ctk.CTk):
                     row = sorted_rows[i]
                     orig_idx = row["orig_index"]
 
-                    self.tree_component.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
+                    self.tree_component.tree.insert(
+                        "",
+                        "end",
+                        iid=str(orig_idx),
+                        values=self.tree_component.get_row_values(row),
+                    )
                     self.visible_file_indices.append(orig_idx)
 
                 # Update progress for tree population
@@ -439,160 +418,6 @@ class DFApp(ctk.CTk):
             print(f"Error toggling theme: {e}")
 
     # -------------------------
-    # UPDATED: Search with version=latest support
-    # -------------------------
-    def on_tree_click(self, event: tk.Event) -> None:
-        """Handle column header clicks for reordering."""
-        region = self.tree_component.tree.identify_region(event.x, event.y)
-        if region == "heading":
-            column = self.tree_component.tree.identify_column(event.x)
-            column_index = int(column.replace("#", "")) - 1
-            if 0 <= column_index < len(DFApp.COLUMN_ORDER):
-                self.tree_component.dragged_column = DFApp.COLUMN_ORDER[column_index]
-                self.tree_component.tree.bind("<B1-Motion>", self.on_column_drag)
-                self.tree_component.tree.bind("<ButtonRelease-1>", self.on_column_drop)
-
-    def on_column_drag(self, event: tk.Event) -> None:
-        """Visual feedback during column drag."""
-        region = self.tree_component.tree.identify_region(event.x, event.y)
-        if region == "heading":
-            column = self.tree_component.tree.identify_column(event.x)
-            try:
-                column_index = int(column.replace("#", "")) - 1
-            except Exception:
-                column_index = None
-
-            if column_index is not None and 0 <= column_index < len(DFApp.COLUMN_ORDER):
-                target = DFApp.COLUMN_ORDER[column_index]
-                # Only update if changed
-                if target != self.tree_component.highlighted_column:
-                    # clear previous
-                    if self.tree_component.highlighted_column:
-                        with contextlib.suppress(Exception):
-                            self.tree_component.tree.heading(self.tree_component.highlighted_column, background="")
-                    # set new highlight (color depends on theme)
-                    try:
-                        hl = "#4b94d6" if (self.current_theme == "Light") else "#3b6ea0"
-                        self.tree_component.tree.heading(target, background=hl)
-                        self.tree_component.highlighted_column = target
-                    except Exception:
-                        self.tree_component.highlighted_column = None
-
-    def on_column_drop(self, event: tk.Event) -> None:
-        """Handle column reordering when dropped."""
-        self.tree_component.tree.unbind("<B1-Motion>")
-        self.tree_component.tree.unbind("<ButtonRelease-1>")
-        # clear any header highlight
-        if self.tree_component.highlighted_column:
-            with contextlib.suppress(Exception):
-                self.tree_component.tree.heading(self.tree_component.highlighted_column, background="")
-            self.tree_component.highlighted_column = None
-
-        if self.tree_component.dragged_column:
-            region = self.tree_component.tree.identify_region(event.x, event.y)
-            if region == "heading":
-                column = self.tree_component.tree.identify_column(event.x)
-                try:
-                    drop_index = int(column.replace("#", "")) - 1
-                except Exception:
-                    drop_index = None
-
-                if drop_index is not None and 0 <= drop_index < len(DFApp.COLUMN_ORDER):
-                    # Reorder the columns
-                    current_index = DFApp.COLUMN_ORDER.index(self.tree_component.dragged_column)
-                    if current_index != drop_index:
-                        DFApp.COLUMN_ORDER.pop(current_index)
-                        DFApp.COLUMN_ORDER.insert(drop_index, self.tree_component.dragged_column)
-                        self.rebuild_tree_columns()
-
-            self.tree_component.dragged_column = None
-
-    def rebuild_tree_columns(self) -> None:
-        """Rebuild tree columns with new order."""
-        # Save current selection and scroll position
-        selection = self.tree_component.tree.selection()
-        scroll_v = self.tree_component.tree.yview()
-        scroll_h = self.tree_component.tree.xview()
-        # Reconfigure columns
-        # Remember previous column order and sizes so we can remap values
-        prev_columns = list(self.tree_component.tree["columns"])
-
-        # Capture current widths and stretch settings to preserve them
-        prev_col_width = {}
-        prev_col_stretch = {}
-        for col in prev_columns:
-            try:
-                info = self.tree_component.tree.column(col)
-                prev_col_width[col] = int(info.get("width", info.get("minwidth", 100)))
-                prev_col_stretch[col] = bool(info.get("stretch", False))
-            except Exception:
-                prev_col_width[col] = 100
-                prev_col_stretch[col] = False
-
-        for col in prev_columns:
-            with contextlib.suppress(Exception):
-                self.tree_component.tree.heading(col, text="")
-
-        column_configs = {
-            MetadataFields.UI_TITLE: ("Title", 180, "w"),
-            MetadataFields.UI_ARTIST: ("Artist", 100, "w"),
-            MetadataFields.UI_COVER_ARTIST: ("Cover Artist", 100, "w"),
-            MetadataFields.UI_VERSION: ("Version", 70, "center"),
-            MetadataFields.UI_DISC: ("Disc", 40, "center"),
-            MetadataFields.UI_TRACK: ("Track", 40, "center"),
-            MetadataFields.UI_DATE: ("Date", 70, "center"),
-            MetadataFields.UI_COMMENT: ("Comment", 120, "w"),
-            MetadataFields.UI_SPECIAL: ("Special", 60, "center"),
-            MetadataFields.UI_FILE: ("File", 120, "w"),
-        }
-
-        # Recreate columns in new order
-        new_columns = list(DFApp.COLUMN_ORDER)
-        self.tree_component.tree["columns"] = new_columns
-
-        for col in new_columns:
-            heading, fallback_width, anchor = column_configs.get(col, (col, 100, "w"))
-            # prefer previous width if available, else fallback
-            width = prev_col_width.get(col, fallback_width)
-            stretch = prev_col_stretch.get(col, False)
-            try:
-                self.tree_component.tree.heading(col, text=heading)
-                # Reapply preserved width/stretch to avoid reset after reorder
-                self.tree_component.tree.column(col, width=width, anchor=anchor, stretch=stretch)
-            except Exception:
-                pass
-
-        # Remap existing item values from prev_columns -> new_columns
-        try:
-            # Build mapping from field name to index in previous values
-            prev_index = {name: idx for idx, name in enumerate(prev_columns)}
-            for iid in self.tree_component.tree.get_children():
-                vals = list(self.tree_component.tree.item(iid, "values") or [])
-                # create dict of previous values
-                vals_map = {}
-                for name, idx in prev_index.items():
-                    try:
-                        vals_map[name] = vals[idx]
-                    except Exception:
-                        vals_map[name] = ""
-
-                # Build new values tuple according to new_columns order
-                new_vals = [vals_map.get(name, "") for name in new_columns]
-                self.tree_component.tree.item(iid, values=tuple(new_vals))
-        except Exception:
-            pass
-
-        # Restore selection and scroll position
-        if selection:
-            with contextlib.suppress(Exception):
-                self.tree_component.tree.selection_set(selection)
-        try:
-            self.tree_component.tree.yview_moveto(scroll_v[0])
-            self.tree_component.tree.xview_moveto(scroll_h[0])
-        except Exception:
-            pass
-
-    # -------------------------
     # Settings persistence
     # -------------------------
     def save_settings(self) -> None:
@@ -609,9 +434,9 @@ class DFApp(ctk.CTk):
 
             # column order and widths
             try:
-                data["column_order"] = DFApp.COLUMN_ORDER
+                data["column_order"] = self.tree_component.column_order
                 widths = {}
-                for col in DFApp.COLUMN_ORDER:
+                for col in self.tree_component.column_order:
                     try:
                         info = self.tree_component.tree.column(col)
                         widths[col] = int(info.get("width", 0))
@@ -619,7 +444,7 @@ class DFApp(ctk.CTk):
                         widths[col] = 0
                 data["column_widths"] = widths
             except Exception:
-                data["column_order"] = DFApp.COLUMN_ORDER
+                data["column_order"] = self.tree_component.column_order
                 data["column_widths"] = {}
 
             # sort rules
@@ -666,9 +491,9 @@ class DFApp(ctk.CTk):
             col_widths = data.get("column_widths", {})
             if col_order and isinstance(col_order, list):
                 # apply order
-                DFApp.COLUMN_ORDER = col_order
+                self.tree_component.column_order = col_order
                 # rebuild columns to new order
-                self.rebuild_tree_columns()
+                self.tree_component.rebuild_tree_columns()
                 # apply widths
                 for c, w in (col_widths or {}).items():
                     with contextlib.suppress(Exception):
@@ -687,11 +512,15 @@ class DFApp(ctk.CTk):
                 for i, r in enumerate(sort_rules):
                     with contextlib.suppress(Exception):
                         if i < len(self.sorting_component.sort_rules):
-                            self.sorting_component.sort_rules[i].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
+                            self.sorting_component.sort_rules[i].field_var.set(
+                                r.get("field", MetadataFields.get_ui_keys()[0])
+                            )
                             self.sorting_component.sort_rules[i].order_var.set(r.get("order", "asc"))
                         else:
                             self.sorting_component.add_sort_rule(is_first=False)
-                            self.sorting_component.sort_rules[-1].field_var.set(r.get("field", MetadataFields.get_ui_keys()[0]))
+                            self.sorting_component.sort_rules[-1].field_var.set(
+                                r.get("field", MetadataFields.get_ui_keys()[0])
+                            )
                             self.sorting_component.sort_rules[-1].order_var.set(r.get("order", "asc"))
         except Exception as e:
             print(f"Error loading sort rules: {e}")
@@ -758,19 +587,6 @@ class DFApp(ctk.CTk):
             with contextlib.suppress(Exception):
                 self.quit()
 
-    def _get_row_values(self, row: dict) -> tuple:
-        """Extract and format values for treeview columns from a data row."""
-        values = []
-        for col in DFApp.COLUMN_ORDER:
-            data_key = RuleManager.COL_MAP.get(col)
-            if col == MetadataFields.UI_VERSION:
-                v = row.get(MetadataFields.VERSION, 0.0)
-                val = str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
-            else:
-                val = row.get(data_key, "") if data_key else ""
-            values.append(str(val))
-        return tuple(values)
-
     def update_tree_row(self, index: int, json_data: dict[str, str]) -> None:
         """Update a specific row in the treeview with new JSON data."""
         if index < 0 or index >= len(self.mp3_files):
@@ -792,7 +608,7 @@ class DFApp(ctk.CTk):
         }
 
         # Create values tuple in the current column order
-        values = tuple(field_values[col] for col in DFApp.COLUMN_ORDER)
+        values = tuple(field_values[col] for col in self.tree_component.column_order)
 
         # Update the treeview item
         self.tree_component.tree.item(str(index), values=values)
@@ -966,7 +782,7 @@ class DFApp(ctk.CTk):
         # Start background scan
         threading.Thread(target=scan_folder, daemon=True).start()
 
-    def refresh_tree(self) -> None:
+    def refresh_tree(self, *_args: list) -> None:
         """Refresh tree with search filtering and multi-sort. Supports structured filters including version=latest."""
         q_raw = self.song_controls_component.search_var.get().strip()
 
@@ -989,7 +805,12 @@ class DFApp(ctk.CTk):
         sorted_rows = sorted_df.to_dicts()
         for row in sorted_rows:
             orig_idx = row["orig_index"]
-            self.tree_component.tree.insert("", "end", iid=str(orig_idx), values=self._get_row_values(row))
+            self.tree_component.tree.insert(
+                "",
+                "end",
+                iid=str(orig_idx),
+                values=self.tree_component.get_row_values(row),
+            )
             self.visible_file_indices.append(orig_idx)
 
         # Update search info label with count and filter summary
@@ -1032,30 +853,9 @@ class DFApp(ctk.CTk):
         # Load metadata
         self.current_metadata = self.file_manager.get_metadata(path)
 
-        # Show JSON
-        self.json_edit_component.json_text.delete("1.0", "end")
-        if self.current_metadata.raw_data:
-            try:
-                # FIXED: Ensure proper encoding for JSON dump
-                json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=False)
-                self.json_edit_component.json_text.insert("1.0", json_str)
-            except Exception as e:
-                print(f"Error displaying JSON: {e}")
-                # Fallback: try with ASCII encoding
-                try:
-                    json_str = json.dumps(self.current_metadata.raw_data, indent=2, ensure_ascii=True)
-                    self.json_edit_component.json_text.insert("1.0", json_str)
-                except Exception:
-                    self.json_edit_component.json_text.insert("1.0", "Error displaying JSON data")
-        else:
-            self.json_edit_component.json_text.insert("1.0", "No JSON found in comments")
-        # Disable JSON save button initially (no changes yet)
-        self.json_edit_component.json_save_btn.configure(state="disabled")
-
-        # Load current filename
-        current_filename = Path(path).name
-        self.filename_component.filename_var.set(current_filename)
-        self.filename_component.filename_save_btn.configure(state="disabled")
+        # Update components
+        self.event_generate("<<JSONEditComponent:UpdateJSON>>")
+        self.event_generate("<<FilenameComponent:UpdateFilename>>")
 
         # FIXED: Update preview FIRST, then load cover
         self.output_preview_component.update_preview()
@@ -1400,7 +1200,7 @@ class DFApp(ctk.CTk):
                         row.logic_var.set(r.get("logic", "AND"))
 
                 # Update arrow states
-                self.update_rule_button_states(cont)
+                self.rule_tabs_component.update_rule_button_states(cont)
 
             # Update button states after loading preset
             self.rule_tabs_component.update_rule_tab_buttons()
@@ -1417,22 +1217,6 @@ class DFApp(ctk.CTk):
     # -------------------------
     # Helper methods
     # -------------------------
-    def _container_to_tab(self, container: ctk.CTkFrame) -> str:
-        """Get tab name from container widget."""
-        for tab_name, cont in self.rule_tabs_component.rule_containers.items():
-            if cont == container:
-                return tab_name
-        return "title"
-
-    def update_rule_button_states(self, container: ctk.CTkFrame) -> None:
-        """Update button states for rules in a container."""
-        slaves = container.pack_slaves()
-        children = [w for w in slaves if isinstance(w, RuleRow)]
-
-        for i, child in enumerate(children):
-            child.set_first(is_first=i == 0)
-            child.set_button_states(is_top=i == 0, is_bottom=i == len(children) - 1)
-
     @property
     def is_dark_mode(self) -> bool:
         """Check if current theme is dark mode."""

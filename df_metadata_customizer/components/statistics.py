@@ -55,9 +55,10 @@ class StatisticsComponent(AppComponent):
         # Delegate calculation to FileManager
         self.stats = self.app.file_manager.calculate_statistics()
 
-        print("Statistics calculated:")
-        for key, value in self.stats.items():
-            print(f"  {key}: {value}")
+        # TODO: Move to debug log
+        # print("Statistics calculated:")
+        # for key, value in self.stats.items():
+        #     print(f"  {key}: {value}")
 
         # Update the status display
         self._update_status_display()

@@ -5,13 +5,16 @@ import json
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import override
+from typing import TYPE_CHECKING, override
 
 import customtkinter as ctk
 
 from df_metadata_customizer import mp3_utils
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.file_manager import FileManager
+
+if TYPE_CHECKING:
+    from df_metadata_customizer.song_metadata import SongMetadata
 
 
 class JSONEditComponent(AppComponent):
@@ -70,6 +73,36 @@ class JSONEditComponent(AppComponent):
                 self.json_text.configure(bg="white", fg="black", insertbackground="black", selectbackground="#0078d7")
         except Exception as e:
             print(f"Error updating JSON text style: {e}")
+
+    @override
+    def register_events(self) -> None:
+        self.app.bind("<<JSONEditComponent:UpdateJSON>>", self.on_update_json_event)
+
+    def on_update_json_event(self, _event: tk.Event | None = None) -> None:
+        """Update the JSON text area when event is triggered."""
+        if self.app.current_metadata:
+            self.update_json(self.app.current_metadata)
+
+    def update_json(self, metadata: "SongMetadata") -> None:
+        """Update the JSON text area with metadata."""
+        self.json_text.delete("1.0", "end")
+        if metadata.raw_data:
+            try:
+                # FIXED: Ensure proper encoding for JSON dump
+                json_str = json.dumps(metadata.raw_data, indent=2, ensure_ascii=False)
+                self.json_text.insert("1.0", json_str)
+            except Exception as e:
+                print(f"Error displaying JSON: {e}")
+                # Fallback: try with ASCII encoding
+                try:
+                    json_str = json.dumps(metadata.raw_data, indent=2, ensure_ascii=True)
+                    self.json_text.insert("1.0", json_str)
+                except Exception:
+                    self.json_text.insert("1.0", "Error displaying JSON data")
+        else:
+            self.json_text.insert("1.0", "No JSON found in comments")
+        # Disable JSON save button initially (no changes yet)
+        self.json_save_btn.configure(state="disabled")
 
     def on_json_changed(self, _event: tk.Event | None = None) -> None:
         """Enable/disable save button based on JSON changes."""
