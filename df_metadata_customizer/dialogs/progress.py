@@ -15,7 +15,6 @@ class ProgressDialog(ctk.CTkToplevel):
 
         # Center the dialog
         self.transient(parent)
-        self.grab_set()
 
         # Center the window
         self.update_idletasks()
@@ -53,6 +52,8 @@ class ProgressDialog(ctk.CTkToplevel):
 
         # Force the window to appear immediately
         self.update()
+        self.wait_visibility()
+        self.grab_set()
 
     def update_progress(self, current: int, total: int, text: str = "") -> bool:
         """Update progress bar. Returns False if cancelled."""

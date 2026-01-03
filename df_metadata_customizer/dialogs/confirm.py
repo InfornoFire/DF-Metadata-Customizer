@@ -26,7 +26,6 @@ class ConfirmDialog(ctk.CTkToplevel):
 
         # Center the dialog on the SCREEN
         self.transient(parent)
-        self.grab_set()
 
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
@@ -75,6 +74,8 @@ class ConfirmDialog(ctk.CTkToplevel):
         self.no_button.pack(side="left")
 
         self.protocol("WM_DELETE_WINDOW", self.on_no)
+        self.wait_visibility()
+        self.grab_set()
         self.wait_window(self)
 
     def on_yes(self) -> None:
