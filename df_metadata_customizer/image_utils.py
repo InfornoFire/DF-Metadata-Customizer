@@ -12,9 +12,9 @@ class LRUImageCache:
     def __init__(self, max_size: int = 100) -> None:
         """Initialize the image cache."""
         self.max_size = max_size
-        self._hash_cache: dict[str, str] = {} # Filepath to image hash
-        self._image_cache: dict[str, Image.Image] = {} # Image hash to Image
-        self._access_order: deque[str] = deque() # LRU with image hashes
+        self._hash_cache: dict[str, str] = {}  # Filepath to image hash
+        self._image_cache: dict[str, Image.Image] = {}  # Image hash to Image
+        self._access_order: deque[str] = deque()  # LRU with image hashes
 
     def get(self, key: str) -> Image.Image | None:
         """Get image from cache, optionally resized."""
@@ -29,8 +29,7 @@ class LRUImageCache:
 
         return self._image_cache.get(image_hash)
 
-
-    def put(self, key: str, image: Image.Image | None, *, resize: bool=True) -> Image.Image | None:
+    def put(self, key: str, image: Image.Image | None, *, resize: bool = True) -> Image.Image | None:
         """Add image to cache with LRU eviction."""
         if resize:
             image = LRUImageCache.optimize_image_for_display(image)
@@ -91,7 +90,10 @@ class LRUImageCache:
             new_width = int(square_size[1] * img_ratio)
 
         # Resize the image to fit within the square container
-        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS) # TODO: Use NEAREST/HAMMING for future performance mode
+        resized_img = img.resize(
+            (new_width, new_height),
+            Image.Resampling.LANCZOS,
+        )  # TODO: Use NEAREST/HAMMING for future performance mode
 
         # Convert to RGB if necessary
         if resized_img.mode != "RGB":

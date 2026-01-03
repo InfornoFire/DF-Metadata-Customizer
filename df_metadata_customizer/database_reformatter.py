@@ -513,13 +513,13 @@ class DFApp(ctk.CTk):
                     with contextlib.suppress(Exception):
                         if i < len(self.sorting_component.sort_rules):
                             self.sorting_component.sort_rules[i].field_var.set(
-                                r.get("field", MetadataFields.get_ui_keys()[0])
+                                r.get("field", MetadataFields.get_ui_keys()[0]),
                             )
                             self.sorting_component.sort_rules[i].order_var.set(r.get("order", "asc"))
                         else:
                             self.sorting_component.add_sort_rule(is_first=False)
                             self.sorting_component.sort_rules[-1].field_var.set(
-                                r.get("field", MetadataFields.get_ui_keys()[0])
+                                r.get("field", MetadataFields.get_ui_keys()[0]),
                             )
                             self.sorting_component.sort_rules[-1].order_var.set(r.get("order", "asc"))
         except Exception as e:

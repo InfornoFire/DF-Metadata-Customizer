@@ -32,7 +32,6 @@ class TreeComponent(AppComponent):
             MetadataFields.UI_FILE,
         ]
 
-
     @override
     def setup_ui(self) -> None:
         self.grid_rowconfigure(0, weight=1)
