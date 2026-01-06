@@ -72,7 +72,8 @@ class RuleTabsComponent(AppComponent):
             # Check if we've reached the limit
             if current_rules >= self.app.max_rules_per_tab:
                 messagebox.showinfo(
-                    "Rule limit", f"Maximum of {self.app.max_rules_per_tab} rules reached for {tab_name}"
+                    "Rule limit",
+                    f"Maximum of {self.app.max_rules_per_tab} rules reached for {tab_name}",
                 )
                 return
 

@@ -2,6 +2,7 @@
 
 import contextlib
 import json
+import logging
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -15,6 +16,9 @@ from df_metadata_customizer.file_manager import FileManager
 
 if TYPE_CHECKING:
     from df_metadata_customizer.song_metadata import SongMetadata
+
+
+logger = logging.getLogger(__name__)
 
 
 class JSONEditComponent(AppComponent):
@@ -71,8 +75,8 @@ class JSONEditComponent(AppComponent):
                 self.json_text.configure(bg="#2b2b2b", fg="white", insertbackground="white", selectbackground="#1f6aa5")
             else:
                 self.json_text.configure(bg="white", fg="black", insertbackground="black", selectbackground="#0078d7")
-        except Exception as e:
-            print(f"Error updating JSON text style: {e}")
+        except Exception:
+            logger.exception("Error updating JSON text style")
 
     @override
     def register_events(self) -> None:
@@ -91,8 +95,8 @@ class JSONEditComponent(AppComponent):
                 # FIXED: Ensure proper encoding for JSON dump
                 json_str = json.dumps(metadata.raw_data, indent=2, ensure_ascii=False)
                 self.json_text.insert("1.0", json_str)
-            except Exception as e:
-                print(f"Error displaying JSON: {e}")
+            except Exception:
+                logger.exception("Error displaying JSON with UTF-8 encoding")
                 # Fallback: try with ASCII encoding
                 try:
                     json_str = json.dumps(metadata.raw_data, indent=2, ensure_ascii=True)

@@ -1,6 +1,7 @@
 """Tree View Component."""
 
 import contextlib
+import logging
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import override
@@ -9,6 +10,8 @@ from df_metadata_customizer import mp3_utils
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.rule_manager import RuleManager
 from df_metadata_customizer.song_metadata import MetadataFields
+
+logger = logging.getLogger(__name__)
 
 
 class TreeComponent(AppComponent):
@@ -115,8 +118,8 @@ class TreeComponent(AppComponent):
                 "Treeview.Heading",
                 background=[("active", "#4b4b4b" if dark else "#e0e0e0")],
             )
-        except Exception as e:
-            print(f"Error updating treeview style: {e}")
+        except Exception:
+            logger.exception("Error updating treeview style")
 
     @override
     def register_events(self) -> None:

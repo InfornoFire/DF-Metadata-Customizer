@@ -1,11 +1,14 @@
 """Statistics Component."""
 
+import logging
 from typing import override
 
 import customtkinter as ctk
 
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.dialogs import StatisticsDialog
+
+logger = logging.getLogger(__name__)
 
 
 class StatisticsComponent(AppComponent):
@@ -49,16 +52,13 @@ class StatisticsComponent(AppComponent):
         if not self.app.mp3_files:
             self.stats = dict.fromkeys(self.stats, 0)
             self._update_status_display()
-            print("No files loaded, stats reset to 0")
+            logger.debug("No files loaded, stats reset to 0")
             return
 
         # Delegate calculation to FileManager
         self.stats = self.app.file_manager.calculate_statistics()
 
-        # TODO: Move to debug log
-        # print("Statistics calculated:")
-        # for key, value in self.stats.items():
-        #     print(f"  {key}: {value}")
+        logger.debug("Statistics calculated: %s", self.stats)
 
         # Update the status display
         self._update_status_display()

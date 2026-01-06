@@ -1,8 +1,11 @@
 """Display various statistics and information."""
 
+import logging
 import tkinter as tk
 
 import customtkinter as ctk
+
+logger = logging.getLogger(__name__)
 
 
 class StatisticsDialog(ctk.CTkToplevel):
@@ -111,8 +114,8 @@ class StatisticsDialog(ctk.CTkToplevel):
         # Try grab with error handling
         try:
             self.grab_set()
-        except tk.TclError as e:
-            print(f"Warning: Could not grab focus: {e}")
+        except tk.TclError:
+            logger.warning("Could not grab focus")
             # Window might already have focus
 
         # Force update of stats

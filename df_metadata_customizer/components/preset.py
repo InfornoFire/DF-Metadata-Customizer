@@ -1,5 +1,6 @@
 """Preset Component."""
 
+import logging
 import tkinter as tk
 from tkinter import ttk
 from typing import override
@@ -7,6 +8,8 @@ from typing import override
 import customtkinter as ctk
 
 from df_metadata_customizer.components.app_component import AppComponent
+
+logger = logging.getLogger(__name__)
 
 
 class PresetComponent(AppComponent):
@@ -59,5 +62,5 @@ class PresetComponent(AppComponent):
                     hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
                     text_color=ctk.ThemeManager.theme["CTkButton"]["text_color"],
                 )
-        except Exception as e:
-            print(f"Error updating theme button: {e}")
+        except Exception:
+            logger.exception("Error updating theme button")

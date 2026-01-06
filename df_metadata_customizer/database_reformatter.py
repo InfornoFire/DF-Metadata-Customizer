@@ -1,6 +1,7 @@
 """Database Reformatter Application - Main Window and Logic."""
 
 import contextlib
+import logging
 import threading
 import time
 import tkinter as tk
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING, Final
 
 import customtkinter as ctk
 from PIL import Image
+from rich.logging import RichHandler
 
 from df_metadata_customizer import mp3_utils
 from df_metadata_customizer.components import (
@@ -37,6 +39,18 @@ if TYPE_CHECKING:
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("dark-blue")
+
+logging_handler = RichHandler(
+    show_time=True,
+    show_level=True,
+    show_path=False,
+    markup=False,
+    rich_tracebacks=True,
+)
+logging.basicConfig(level=logging.DEBUG, format="%(message)s", handlers=[logging_handler])
+logging.getLogger("PIL").setLevel(logging.INFO) # Suppress PIL debug logs
+
+logger = logging.getLogger(__name__)
 
 
 class DFApp(ctk.CTk):
@@ -362,8 +376,8 @@ class DFApp(ctk.CTk):
             else:
                 self._safe_cover_display_update("No cover", clear_image=True)
 
-        except Exception as e:
-            print(f"Error loading cover: {e}")
+        except Exception:
+            logger.exception("Error loading cover")
             self._safe_cover_display_update("No cover (error)", clear_image=True)
 
     def display_cover_image(self, img: Image.Image | None) -> None:
@@ -384,8 +398,8 @@ class DFApp(ctk.CTk):
             # Update display - the label will center the image automatically
             self.json_edit_component.cover_display.configure(image=ctk_image, text="")
 
-        except Exception as e:
-            print(f"Error displaying cover: {e}")
+        except Exception:
+            logger.exception("Error displaying cover")
             self._safe_cover_display_update("Error loading cover", clear_image=True)
 
     def toggle_theme(self, theme: str | None = None) -> None:
@@ -421,8 +435,8 @@ class DFApp(ctk.CTk):
             else:
                 self._safe_cover_display_update("No cover", clear_image=True)
 
-        except Exception as e:
-            print(f"Error toggling theme: {e}")
+        except Exception:
+            logger.exception("Error toggling theme")
 
     # -------------------------
     # Settings persistence
@@ -468,8 +482,8 @@ class DFApp(ctk.CTk):
 
             # write file
             SettingsManager.save_settings(data)
-        except Exception as e:
-            print(f"Error saving settings: {e}")
+        except Exception:
+            logger.exception("Error saving settings")
 
     def load_settings(self) -> None:
         """Load UI settings from JSON file and apply them where possible."""
@@ -483,8 +497,8 @@ class DFApp(ctk.CTk):
             if th:
                 self.current_theme = th
                 self.toggle_theme(theme=th)
-        except Exception as e:
-            print(f"Error loading theme setting: {e}")
+        except Exception:
+            logger.exception("Error loading theme setting")
 
         try:
             # last folder
@@ -505,8 +519,8 @@ class DFApp(ctk.CTk):
                 for c, w in (col_widths or {}).items():
                     with contextlib.suppress(Exception):
                         self.tree_component.tree.column(c, width=int(w))
-        except Exception as e:
-            print(f"Error loading column settings: {e}")
+        except Exception:
+            logger.exception("Error loading column settings")
 
         try:
             # sort rules
@@ -529,8 +543,8 @@ class DFApp(ctk.CTk):
                                 r.get("field", MetadataFields.get_ui_keys()[0]),
                             )
                             self.sorting_component.sort_rules[-1].order_var.set(r.get("order", "asc"))
-        except Exception as e:
-            print(f"Error loading sort rules: {e}")
+        except Exception:
+            logger.exception("Error loading sort rules")
 
         try:
             # sash ratio - apply after window is laid out
@@ -552,8 +566,8 @@ class DFApp(ctk.CTk):
                             self.after(150, lambda: apply_ratio(attempts + 1))
 
                 self.after(200, lambda: apply_ratio(0))
-        except Exception as e:
-            print(f"Error loading sash ratio: {e}")
+        except Exception:
+            logger.exception("Error loading sash ratio")
 
     def check_last_folder(self) -> None:
         """Check if there is a last opened folder and prompt the user to load it."""
@@ -752,8 +766,8 @@ class DFApp(ctk.CTk):
                             self.after_idle(lambda c=count: update_scan_progress(c))
 
                 self.after_idle(lambda: on_scan_complete(files))
-            except Exception as e:
-                print(f"Error scanning folder: {e}")
+            except Exception:
+                logger.exception("Error scanning folder")
                 self.after_idle(lambda: on_scan_complete([]))
 
         def on_scan_complete(files: list[str] | None) -> None:
@@ -1122,8 +1136,8 @@ class DFApp(ctk.CTk):
         try:
             vals = SettingsManager.list_presets()
             self.preset_component.preset_combo["values"] = vals
-        except Exception as e:
-            print(f"Error loading presets: {e}")
+        except Exception:
+            logger.exception("Error loading presets")
             self.preset_component.preset_combo["values"] = []
 
     def delete_preset(self) -> None:

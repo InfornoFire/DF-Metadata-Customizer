@@ -1,11 +1,14 @@
 """Output Preview Component."""
 
+import logging
 from typing import override
 
 import customtkinter as ctk
 
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.rule_manager import RuleManager
+
+logger = logging.getLogger(__name__)
 
 
 class OutputPreviewComponent(AppComponent):
@@ -72,8 +75,8 @@ class OutputPreviewComponent(AppComponent):
                 self.lbl_out_date,
             ]:
                 label.configure(fg_color=bg_color, text_color=text_color)
-        except Exception as e:
-            print(f"Error updating output preview style: {e}")
+        except Exception:
+            logger.exception("Error updating output preview style")
 
     def update_preview(self) -> None:
         """Update the output preview based on current rules and selected JSON."""
@@ -111,8 +114,8 @@ class OutputPreviewComponent(AppComponent):
             self.lbl_out_track.configure(text=metadata.track)
             self.lbl_out_date.configure(text=metadata.date)
 
-        except Exception as e:
-            print(f"Error setting preview text: {e}")
+        except Exception:
+            logger.exception("Error setting preview text")
             self.lbl_out_title.configure(text="")
             self.lbl_out_artist.configure(text="")
             self.lbl_out_album.configure(text="")

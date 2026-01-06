@@ -1,10 +1,13 @@
 """Manages application settings and presets persistence."""
 
 import json
+import logging
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsManager:
@@ -60,8 +63,8 @@ class SettingsManager:
         try:
             with cls.get_settings_path().open("w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error saving settings: {e}")
+        except Exception:
+            logger.exception("Error saving settings")
 
     @classmethod
     def load_settings(cls) -> dict[str, Any]:
@@ -72,6 +75,7 @@ class SettingsManager:
             with cls.get_settings_path().open("r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
+            logger.exception("Error loading settings")
             return {}
 
     @classmethod
