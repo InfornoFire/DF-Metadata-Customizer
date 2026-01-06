@@ -63,6 +63,10 @@ class StatisticsComponent(AppComponent):
         # Update the status display
         self._update_status_display()
 
+        # Update dialog
+        if hasattr(self, "_status_popup") and self._status_popup.winfo_exists():
+            self._status_popup.update_stats(self.stats)
+
     def _update_status_display(self) -> None:
         """Update the main status display."""
         self.status_label.configure(
