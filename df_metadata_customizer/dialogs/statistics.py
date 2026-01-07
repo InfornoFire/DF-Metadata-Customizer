@@ -53,7 +53,7 @@ class StatisticsDialog(ctk.CTkToplevel):
             ("📚 Other Songs (total):", "other_total"),
         ]
 
-        self.stat_labels = {}
+        self.stat_labels: dict[str, ctk.CTkLabel] = {}
         row_idx = 1
 
         for label_text, stat_key in stats_data:
@@ -107,16 +107,6 @@ class StatisticsDialog(ctk.CTkToplevel):
         # Update window to ensure it's visible
         self.update()
         self.update_idletasks()
-
-        # Now make it modal - FIXED: Wait until window is viewable
-        self.focus_set()
-
-        # Try grab with error handling
-        try:
-            self.grab_set()
-        except tk.TclError:
-            logger.warning("Could not grab focus")
-            # Window might already have focus
 
         # Force update of stats
         self.update_stats(stats)

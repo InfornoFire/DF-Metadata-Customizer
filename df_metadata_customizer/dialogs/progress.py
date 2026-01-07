@@ -32,9 +32,6 @@ class ProgressDialog(ctk.CTkToplevel):
         y = parent_y + (parent_height - height) // 2
         self.geometry(f"+{x}+{y}")
 
-        # Make it modal
-        self.focus_set()
-
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -57,7 +54,8 @@ class ProgressDialog(ctk.CTkToplevel):
 
         # Force the window to appear immediately
         self.update()
-        self.wait_visibility()
+        self.update_idletasks()
+
         self.grab_set()
 
     def update_progress(self, current: int, total: int, text: str = "") -> bool:

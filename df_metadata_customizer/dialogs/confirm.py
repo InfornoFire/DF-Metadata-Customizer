@@ -81,8 +81,12 @@ class ConfirmDialog(ctk.CTkToplevel):
         self.no_button.pack(side="left")
 
         self.protocol("WM_DELETE_WINDOW", self.on_no)
-        self.wait_visibility()
+
+        self.update()
+        self.update_idletasks()
+
         self.grab_set()
+
         self.wait_window(self)
 
     def on_yes(self) -> None:
