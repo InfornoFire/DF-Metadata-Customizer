@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import override
 
-from df_metadata_customizer import mp3_utils
+from df_metadata_customizer import song_utils
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.rule_manager import RuleManager
 from df_metadata_customizer.song_metadata import MetadataFields
@@ -148,12 +148,12 @@ class TreeComponent(AppComponent):
         except Exception:
             return
 
-        if idx < 0 or idx >= len(self.app.mp3_files):
+        if idx < 0 or idx >= len(self.app.song_files):
             return
 
         try:
-            if not mp3_utils.play_song(self.app.mp3_files[idx]):
-                mp3_utils.show_audio_player_instructions()
+            if not song_utils.play_song(self.app.song_files[idx]):
+                song_utils.show_audio_player_instructions()
         except Exception as e:
             messagebox.showerror("Playback Error", f"Could not play file:\n{e!s}")
 

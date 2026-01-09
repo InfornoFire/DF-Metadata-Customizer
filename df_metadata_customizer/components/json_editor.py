@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, override
 
 import customtkinter as ctk
 
-from df_metadata_customizer import mp3_utils
+from df_metadata_customizer import song_utils
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.file_manager import FileManager
 
@@ -129,8 +129,8 @@ class JSONEditComponent(AppComponent):
             self.json_save_btn.configure(state="disabled")
 
     def save_json_to_file(self) -> None:
-        """Save the edited JSON back to the current MP3 file."""
-        if self.app.current_index is None or not self.app.mp3_files:
+        """Save the edited JSON back to the current song file."""
+        if self.app.current_index is None or not self.app.song_files:
             messagebox.showwarning("No file selected", "Please select a file first")
             return
 
@@ -150,7 +150,7 @@ class JSONEditComponent(AppComponent):
             return
 
         # Confirm save
-        path = self.app.mp3_files[self.app.current_index]
+        path = self.app.song_files[self.app.current_index]
         filename = Path(path).name
         result = messagebox.askyesno("Confirm Save", f"Save JSON changes to:\n{filename}?")
 
@@ -184,5 +184,5 @@ class JSONEditComponent(AppComponent):
                 messagebox.showerror("Error", f"Failed to save JSON to {filename}")
 
         # Save JSON
-        saved = mp3_utils.write_json_to_mp3(path, full_comment)
+        saved = song_utils.write_json_to_song(path, full_comment)
         self.after(0, lambda: on_save_complete(filename, success=saved))

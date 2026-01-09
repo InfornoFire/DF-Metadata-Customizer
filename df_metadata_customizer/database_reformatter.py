@@ -13,7 +13,7 @@ import customtkinter as ctk
 from PIL import Image
 from rich.logging import RichHandler
 
-from df_metadata_customizer import mp3_utils
+from df_metadata_customizer import song_utils
 from df_metadata_customizer.components import (
     FilenameComponent,
     JSONEditComponent,
@@ -89,7 +89,7 @@ class DFApp(ctk.CTk):
         self.file_manager = FileManager()
 
         # Data model
-        self.mp3_files = []  # list of file paths
+        self.song_files = []  # list of file paths
         self.current_index = None
         self.current_metadata: SongMetadata | None = None
 
@@ -213,7 +213,7 @@ class DFApp(ctk.CTk):
     # -------------------------
     def populate_tree_fast(self) -> None:
         """Populate tree with threaded data loading and multi-sort."""
-        self.lbl_file_info.configure(text=f"Loading {len(self.mp3_files)} files...")
+        self.lbl_file_info.configure(text=f"Loading {len(self.song_files)} files...")
         self.update_idletasks()
 
         def update_loading_progress(current: int, total: int) -> None:
@@ -226,10 +226,10 @@ class DFApp(ctk.CTk):
 
         def load_file_data_worker() -> None:
             """Load file data in background thread."""
-            total = len(self.mp3_files)
+            total = len(self.song_files)
 
             # Pre-load all file data first
-            for i, p in enumerate(self.mp3_files):
+            for i, p in enumerate(self.song_files):
                 # Check for cancellation
                 if self.progress_dialog and self.progress_dialog.cancelled:
                     self.after_idle(lambda: on_data_loaded(success=False))
@@ -255,7 +255,7 @@ class DFApp(ctk.CTk):
                 return
 
             # Get view data from FileManager
-            df = self.file_manager.get_view_data(self.mp3_files)
+            df = self.file_manager.get_view_data(self.song_files)
 
             # Apply multi-level sorting using Polars
             sorted_df = RuleManager.apply_multi_sort_polars(self.sorting_component.sort_rules, df)
@@ -303,7 +303,7 @@ class DFApp(ctk.CTk):
                         self.tree_component.tree.selection_set(self.tree_component.tree.get_children()[0])
                         self.on_tree_select()
 
-                    self.lbl_file_info.configure(text=f"Loaded {len(self.mp3_files)} files")
+                    self.lbl_file_info.configure(text=f"Loaded {len(self.song_files)} files")
                     self.song_controls_component.btn_select_folder.configure(state="normal")
                     self.operation_in_progress = False
 
@@ -343,10 +343,10 @@ class DFApp(ctk.CTk):
 
     def load_current_cover(self) -> None:
         """Load cover image for current song."""
-        if self.current_index is None or not self.mp3_files:
+        if self.current_index is None or not self.song_files:
             return
 
-        path = self.mp3_files[self.current_index]
+        path = self.song_files[self.current_index]
 
         # Prevent UI blocking
         current_time = time.time()
@@ -369,7 +369,7 @@ class DFApp(ctk.CTk):
     def load_cover_art(self, path: str) -> None:
         """Request loading of cover art for the given file path."""
         try:
-            img = mp3_utils.read_cover_from_mp3(path)
+            img = song_utils.read_cover_from_song(path)
             if img:
                 img = self.cover_cache.put(path, img)  # Cache the optimized image
                 self.display_cover_image(img)
@@ -610,10 +610,10 @@ class DFApp(ctk.CTk):
 
     def update_tree_row(self, index: int, json_data: dict[str, str]) -> None:
         """Update a specific row in the treeview with new JSON data."""
-        if index < 0 or index >= len(self.mp3_files):
+        if index < 0 or index >= len(self.song_files):
             return
 
-        path = self.mp3_files[index]
+        path = self.song_files[index]
         # Create field values dictionary
         field_values = {
             MetadataFields.UI_TITLE: json_data.get(MetadataFields.TITLE) or Path(path).stem,
@@ -642,7 +642,7 @@ class DFApp(ctk.CTk):
         if self.current_index is None:
             return
 
-        current_path = self.mp3_files[self.current_index]
+        current_path = self.song_files[self.current_index]
         current_filename = Path(current_path).name
         new_filename = self.filename_component.filename_var.get().strip()
 
@@ -654,9 +654,10 @@ class DFApp(ctk.CTk):
             messagebox.showinfo("No change", "Filename is the same as current")
             return
 
-        # Ensure the new filename has .mp3 extension
-        if not new_filename.lower().endswith(".mp3"):
-            new_filename += ".mp3"
+        # Ensure the new filename has a supported extension
+        if not any(new_filename.lower().endswith(ext) for ext in song_utils.SUPPORTED_FILES_TYPES):
+            messagebox.showwarning("Invalid filename", "Filename must end with a valid extension")
+            return
 
         # Get directory and construct new path
         directory = Path(current_path).parent
@@ -681,7 +682,7 @@ class DFApp(ctk.CTk):
         def on_rename_complete(old_name: str, new_name_or_error: str, *, success: bool) -> None:
             if success:
                 # Update the file path in our list
-                self.mp3_files[self.current_index] = new_path
+                self.song_files[self.current_index] = new_path
 
                 # Update cache entries
                 self.file_manager.update_file_path(current_path, new_path)
@@ -713,7 +714,7 @@ class DFApp(ctk.CTk):
     # File / tree operations
     # -------------------------
     def select_folder(self, folder_path: str | None = None) -> None:
-        """Handle folder selection and MP3 scanning with progress dialog."""
+        """Handle folder selection and song scanning with progress dialog."""
         if self.operation_in_progress:
             return
 
@@ -739,7 +740,7 @@ class DFApp(ctk.CTk):
 
         # Create and show progress dialog IMMEDIATELY
         self.progress_dialog = ProgressDialog(self, "Loading Folder")
-        self.progress_dialog.update_progress(0, 100, "Finding MP3 files...")
+        self.progress_dialog.update_progress(0, 100, "Finding song files...")
 
         def update_scan_progress(count: int) -> None:
             if self.progress_dialog:
@@ -752,13 +753,13 @@ class DFApp(ctk.CTk):
                 count = 0
 
                 # Use pathlib for faster file discovery
-                for p in Path(folder).glob("**/*.mp3"):
+                for p in Path(folder).rglob("*"):
                     # Check for cancellation
                     if self.progress_dialog and self.progress_dialog.cancelled:
                         self.after_idle(lambda: on_scan_complete(None))
                         return
 
-                    if p.is_file() and p.suffix.lower() == ".mp3":
+                    if p.is_file() and p.suffix.lower() in song_utils.SUPPORTED_FILES_TYPES:
                         files.append(str(p))
                         count += 1
                         # Update progress every 10 files
@@ -781,9 +782,9 @@ class DFApp(ctk.CTk):
                     self.progress_dialog = None
                 return
 
-            self.mp3_files = files
-            if not self.mp3_files:
-                messagebox.showwarning("No files", "No mp3 files found in that folder")
+            self.song_files = files
+            if not self.song_files:
+                messagebox.showwarning("No files", "No song files found in that folder")
                 self.lbl_file_info.configure(text="No files")
                 self.song_controls_component.btn_select_folder.configure(state="normal")
                 self.operation_in_progress = False
@@ -808,7 +809,7 @@ class DFApp(ctk.CTk):
         q_raw = self.song_controls_component.search_var.get().strip()
 
         # Get view data from FileManager
-        df = self.file_manager.get_view_data(self.mp3_files)
+        df = self.file_manager.get_view_data(self.song_files)
 
         # Apply search filters
         filters, free_terms = RuleManager.parse_search_query(q_raw)
@@ -857,18 +858,18 @@ class DFApp(ctk.CTk):
             idx = int(iid)
         except Exception:
             return
-        if idx < 0 or idx >= len(self.mp3_files):
+        if idx < 0 or idx >= len(self.song_files):
             return
         self.current_index = idx
         self.load_current()
 
     def load_current(self) -> None:
         """Load current song data."""
-        if self.current_index is None or not self.mp3_files:
+        if self.current_index is None or not self.song_files:
             return
-        path = self.mp3_files[self.current_index]
+        path = self.song_files[self.current_index]
         self.lbl_file_info.configure(
-            text=f"{self.current_index + 1}/{len(self.mp3_files)}  —  {Path(path).name}",
+            text=f"{self.current_index + 1}/{len(self.song_files)}  —  {Path(path).name}",
         )
 
         # Load metadata
@@ -971,7 +972,7 @@ class DFApp(ctk.CTk):
             messagebox.showwarning("No selection", "Select rows in the song list first")
             return
 
-        paths = [self.mp3_files[int(iid)] for iid in sel]
+        paths = [self.song_files[int(iid)] for iid in sel]
 
         # Collect rules on main thread BEFORE starting background thread
         title_rules = self.collect_rules_for_tab("title")
@@ -1025,7 +1026,7 @@ class DFApp(ctk.CTk):
                     cover_bytes = None
                     cover_mime = "image/jpeg"
 
-                    if mp3_utils.write_id3_tags(
+                    if song_utils.write_id3_tags(
                         p,
                         title=new_title,
                         artist=new_artist,
@@ -1086,12 +1087,12 @@ class DFApp(ctk.CTk):
 
     def apply_to_all(self) -> None:
         """Apply metadata changes to all loaded files with confirmation."""
-        if not self.mp3_files:
+        if not self.song_files:
             messagebox.showwarning("No files", "Load a folder first")
             return
 
         # Show confirmation with file count
-        res = messagebox.askyesno("Confirm", f"Apply to all {len(self.mp3_files)} files?")
+        res = messagebox.askyesno("Confirm", f"Apply to all {len(self.song_files)} files?")
         if not res:
             return
 

@@ -1,4 +1,4 @@
-"""Utilities for reading/writing MP3 ID3 tags and embedded JSON metadata."""
+"""Utilities for reading/writing Song ID3 tags and embedded JSON metadata."""
 
 import contextlib
 import json
@@ -16,8 +16,10 @@ from tinytag import TinyTag
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_FILES_TYPES = set(TinyTag.SUPPORTED_FILE_EXTENSIONS)
 
-def extract_json_from_mp3(path: str) -> dict | None:
+
+def extract_json_from_song(path: str) -> dict | None:
     """Return parsed JSON dict or None."""
     try:
         tags = TinyTag.get(path, tags=True, image=False)
@@ -43,8 +45,8 @@ def extract_json_from_mp3(path: str) -> dict | None:
     return comm_data
 
 
-def write_json_to_mp3(path: str, json_data: dict | str) -> bool:
-    """Write JSON data back to MP3 comment tag."""
+def write_json_to_song(path: str, json_data: dict | str) -> bool:
+    """Write JSON data back to song comment tag."""
     try:
         # Try to load existing tags or create new ones
         try:
@@ -72,12 +74,12 @@ def write_json_to_mp3(path: str, json_data: dict | str) -> bool:
         # Save the tags
         tags.save(path)
     except Exception:
-        logger.exception("Error writing JSON to MP3")
+        logger.exception("Error writing JSON to song")
         return False
     return True
 
 
-def read_cover_from_mp3(path: str) -> Image.Image | None:
+def read_cover_from_song(path: str) -> Image.Image | None:
     """Return (PIL Image, mime) or (None, None)."""
     try:
         tags = TinyTag.get(path, tags=True, image=True)
