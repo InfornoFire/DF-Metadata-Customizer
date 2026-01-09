@@ -28,7 +28,7 @@ from df_metadata_customizer.components import (
 )
 from df_metadata_customizer.dialogs import ConfirmDialog, ProgressDialog
 from df_metadata_customizer.file_manager import FileManager
-from df_metadata_customizer.image_utils import LRUImageCache
+from df_metadata_customizer.image_utils import LRUCTKImageCache
 from df_metadata_customizer.rule_manager import RuleManager
 from df_metadata_customizer.settings_manager import SettingsManager
 from df_metadata_customizer.song_metadata import MetadataFields
@@ -104,7 +104,7 @@ class DFApp(ctk.CTk):
         self.theme_icon_cache = {}  # Cache for theme icons
 
         # Cover image settings - OPTIMIZED
-        self.cover_cache = LRUImageCache(max_size=50)  # Optimized cache
+        self.cover_cache = LRUCTKImageCache(max_size=50)  # Optimized cache
         self.last_cover_request_time = 0.0  # Track last cover request time for throttling
 
         # Maximum number of allowed sort rules (including the primary rule)
@@ -350,7 +350,7 @@ class DFApp(ctk.CTk):
 
         # Prevent UI blocking
         current_time = time.time()
-        if current_time - self.last_cover_request_time < 0.1:
+        if current_time - self.last_cover_request_time < 0.1:  # TODO: Remove on non-performant mode
             return
         self.last_cover_request_time = current_time
 
@@ -371,8 +371,8 @@ class DFApp(ctk.CTk):
         try:
             img = song_utils.read_cover_from_song(path)
             if img:
-                img = self.cover_cache.put(path, img)  # Cache the optimized image
-                self.display_cover_image(img)
+                ctk_image = self.cover_cache.put(path, img)
+                self.display_cover_image(ctk_image)
             else:
                 self._safe_cover_display_update("No cover", clear_image=True)
 
@@ -380,24 +380,14 @@ class DFApp(ctk.CTk):
             logger.exception("Error loading cover")
             self._safe_cover_display_update("No cover (error)", clear_image=True)
 
-    def display_cover_image(self, img: Image.Image | None) -> None:
+    def display_cover_image(self, ctk_image: ctk.CTkImage | None) -> None:
         """Display cover image centered in the square container."""
-        if not img:
+        if not ctk_image:
             self._safe_cover_display_update("No cover", clear_image=True)
             return
 
         try:
-            # The image is already optimized to fit within 200x200 square
-            # Convert to CTkImage for display
-            ctk_image = ctk.CTkImage(
-                light_image=img,
-                dark_image=img,
-                size=(img.width, img.height),  # Use the actual dimensions of the optimized image
-            )
-
-            # Update display - the label will center the image automatically
             self.json_edit_component.cover_display.configure(image=ctk_image, text="")
-
         except Exception:
             logger.exception("Error displaying cover")
             self._safe_cover_display_update("Error loading cover", clear_image=True)
