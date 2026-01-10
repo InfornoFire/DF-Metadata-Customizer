@@ -1,6 +1,7 @@
 """Tree View Component."""
 
 import contextlib
+import json
 import logging
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -79,6 +80,12 @@ class TreeComponent(AppComponent):
         # Double-click to play song
         self.tree.bind("<Double-1>", self.on_tree_double_click)
 
+        # Right-click context menu
+        self.tree.bind("<Button-3>", self.on_tree_right_click)
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Copy", command=lambda: None)
+        self.context_menu.add_command(label="Copy JSON", command=lambda: None)
+
         # Vertical scrollbar
         self.tree_scroll_v = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=self.tree_scroll_v.set)
@@ -135,6 +142,57 @@ class TreeComponent(AppComponent):
                 self.dragged_column = self.column_order[column_index]
                 self.tree.bind("<B1-Motion>", self.on_column_drag)
                 self.tree.bind("<ButtonRelease-1>", self.on_column_drop)
+
+    def on_tree_right_click(self, event: tk.Event) -> None:
+        """Handle right-click context menu to copy cell value."""
+        region = self.tree.identify_region(event.x, event.y)
+        if region == "cell":
+            row_id = self.tree.identify_row(event.y)
+            col = self.tree.identify_column(event.x)
+
+            if row_id and col:
+                try:
+                    # Determine column index from identifier like '#1'
+                    col_index = int(col.replace("#", "")) - 1
+                    values = self.tree.item(row_id, "values")
+
+                    if 0 <= col_index < len(values):
+                        # Get column name
+                        col_id = self.column_order[col_index]
+                        col_name = self.tree.heading(col_id, "text")
+
+                        value = str(values[col_index])
+
+                        # Copy <Col>
+                        self.context_menu.entryconfigure(
+                            0,
+                            label=f"Copy {col_name}",
+                            command=lambda: self.copy_to_clipboard(value),
+                        )
+
+                        # Copy JSON
+                        try:
+                            idx = int(row_id)
+                            path = self.app.song_files[idx]
+                            metadata = self.app.file_manager.get_metadata(path)
+                            json_data = json.dumps(metadata.raw_data, indent=2)
+                            self.context_menu.entryconfigure(
+                                1,
+                                state="normal",
+                                command=lambda: self.copy_to_clipboard(json_data),
+                            )
+                        except Exception:
+                            self.context_menu.entryconfigure(1, state="disabled")
+
+                        self.context_menu.tk_popup(event.x_root, event.y_root)
+                except ValueError:
+                    pass
+
+    def copy_to_clipboard(self, text: str) -> None:
+        """Copy text to system clipboard."""
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.update()  # Required to finalize clipboard update
 
     def on_tree_double_click(self, _event: tk.Event) -> None:
         """Play the selected song when double-clicked."""
