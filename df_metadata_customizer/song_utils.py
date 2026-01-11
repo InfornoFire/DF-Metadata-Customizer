@@ -18,7 +18,7 @@ from tinytag import TinyTag
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_FILES_TYPES = set(TinyTag.SUPPORTED_FILE_EXTENSIONS)
+SUPPORTED_FILES_TYPES = {".mp3"}  # set(TinyTag.SUPPORTED_FILE_EXTENSIONS)
 
 
 def extract_json_from_song(path: str) -> dict | None:
