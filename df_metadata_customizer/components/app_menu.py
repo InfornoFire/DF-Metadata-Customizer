@@ -47,6 +47,20 @@ class AppMenuComponent(AppComponent):
         )
         self.tools_menu_btn.pack(side="left", padx=0, pady=0)
 
+        self.theme_btn = ctk.CTkButton(
+            self,
+            text="",
+            width=50,
+            height=20,
+            corner_radius=5,
+            fg_color=bar_bg_color,
+            hover_color=("gray75", "gray18"),
+            text_color=("gray10", "gray90"),
+            anchor="center",
+            command=self.app.toggle_theme,
+        )
+        self.theme_btn.pack(side="right", padx=0, pady=0)
+
         self._create_file_menu()
         self._create_tools_menu()
         self.update_theme()
@@ -80,8 +94,10 @@ class AppMenuComponent(AppComponent):
 
             if dark:
                 bg_color, fg_color, active_bg, active_fg = "gray15", "gray90", "gray18", "white"
+                self.theme_btn.configure(text="☀️")
             else:
                 bg_color, fg_color, active_bg, active_fg = "gray90", "gray10", "gray75", "black"
+                self.theme_btn.configure(text="🌙")
 
             self.file_menu.configure(
                 background=bg_color,

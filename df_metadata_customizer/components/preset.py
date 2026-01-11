@@ -30,38 +30,3 @@ class PresetComponent(AppComponent):
 
         ctk.CTkButton(self, text="Save Preset", command=self.app.save_preset, width=80).grid(row=0, column=2, padx=4)
         ctk.CTkButton(self, text="Delete", command=self.app.delete_preset, width=60).grid(row=0, column=3, padx=4)
-
-        # Theme toggle button
-        self.theme_btn = ctk.CTkButton(
-            self,
-            text="",
-            width=40,
-            height=30,
-            command=self.app.toggle_theme,
-            fg_color="transparent",
-            hover_color=("gray70", "gray30"),
-        )
-        self.theme_btn.grid(row=0, column=4, padx=(8, 0))
-        self.update_theme()
-
-    @override
-    def update_theme(self) -> None:
-        try:
-            if SettingsManager.is_dark_mode():
-                # Currently dark, show light theme button
-                self.theme_btn.configure(
-                    text="☀️",
-                    fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"],
-                    hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
-                    text_color=ctk.ThemeManager.theme["CTkButton"]["text_color"],
-                )
-            else:
-                # Currently light, show dark theme button
-                self.theme_btn.configure(
-                    text="🌙",
-                    fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"],
-                    hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
-                    text_color=ctk.ThemeManager.theme["CTkButton"]["text_color"],
-                )
-        except Exception:
-            logger.exception("Error updating theme button")

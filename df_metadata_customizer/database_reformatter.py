@@ -414,7 +414,6 @@ class DFApp(ctk.CTk):
             self.tree_component.update_theme()
             self.json_edit_component.update_theme()
             self.output_preview_component.update_theme()
-            self.preset_component.update_theme()
 
             # Refresh the tree to apply new styles
             if self.tree_component.tree.get_children():
