@@ -37,7 +37,7 @@ def extract_json_from_song(path: str) -> dict | None:
         # Combine jsons
         comm_data = {}
         for text in texts:
-            with contextlib.suppress(json.JSONDecodeError):
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 comm_data.update(json.loads(text))
 
     except Exception:
