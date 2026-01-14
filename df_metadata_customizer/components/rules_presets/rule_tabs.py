@@ -213,13 +213,13 @@ class RuleTabsComponent(AppComponent):
             return
 
         if platform.system() == "Linux" and scroll_frame.winfo_viewable():
+
             def _scroll(amount: int) -> None:
                 if scroll_frame._parent_canvas.yview() != (0.0, 1.0):  # noqa: SLF001
                     scroll_frame._parent_canvas.yview("scroll", amount, "units")  # noqa: SLF001
 
             scroll_frame.bind_all("<Button-4>", lambda _: _scroll(-1))
             scroll_frame.bind_all("<Button-5>", lambda _: _scroll(1))
-
 
     def container_to_tab(self, container: ctk.CTkFrame) -> str:
         """Get tab name from container widget."""

@@ -18,6 +18,7 @@ from df_metadata_customizer.components import (
     JSONEditComponent,
     NavigationComponent,
     SongControlsComponent,
+    SongEditComponent,
     SortingComponent,
     StatisticsComponent,
     TreeComponent,
@@ -179,37 +180,71 @@ class DFApp(ctk.CTk):
         self.paned.add(self.right_frame, minsize=480)
 
         self.right_frame.grid_columnconfigure(0, weight=1)
-        self.right_frame.grid_rowconfigure(1, weight=1)  # tab area expands
-        self.right_frame.grid_rowconfigure(2, weight=2)  # preview area expands
+        self.right_frame.grid_rowconfigure(2, weight=1)
+
+        # View Switcher
+        self.view_switcher = ctk.CTkSegmentedButton(
+            self.right_frame,
+            values=["Rules + Presets", "Song Edit"],
+            command=self.switch_right_view,
+        )
+        self.view_switcher.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+        self.view_switcher.set("Rules + Presets")
+
+        # --- Rules View Frame ---
+        self.rules_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
+        self.rules_frame.grid_columnconfigure(0, weight=1)
+        self.rules_frame.grid_rowconfigure(1, weight=1)
 
         # Preset controls
-        self.preset_component = PresetComponent(self.right_frame, self)
-        self.preset_component.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 6))
+        self.preset_component = PresetComponent(self.rules_frame, self)
+        self.preset_component.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 6))
 
         # Rule Tabs
-        self.rule_tabs_component = RuleTabsComponent(self.right_frame, self)
-        self.rule_tabs_component.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 6))
+        self.rule_tabs_component = RuleTabsComponent(self.rules_frame, self)
+        self.rule_tabs_component.grid(row=1, column=0, sticky="nsew", padx=0, pady=(0, 6))
 
-        # Preview Area (JSON & Cover)
-        self.json_edit_component = JSONEditComponent(self.right_frame, self)
-        self.json_edit_component.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        # JSON Editor
+        self.json_edit_component = JSONEditComponent(self.rules_frame, self)
+        self.json_edit_component.grid(row=2, column=0, sticky="ew", padx=0, pady=(0, 6))
+        self.rules_frame.grid_rowconfigure(2, weight=0)
 
         # Output Preview
-        self.output_preview_component = OutputPreviewComponent(self.right_frame, self)
-        self.output_preview_component.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
+        self.output_preview_component = OutputPreviewComponent(self.rules_frame, self)
+        self.output_preview_component.grid(row=3, column=0, sticky="ew", padx=0, pady=(0, 8))
 
         # Filename Editing
-        self.filename_component = FilenameComponent(self.right_frame, self)
-        self.filename_component.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 8))
+        self.filename_component = FilenameComponent(self.rules_frame, self)
+        self.filename_component.grid(row=4, column=0, sticky="ew", padx=0, pady=(0, 8))
+
+        # --- Edit View Frame ---
+        self.edit_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
+        self.edit_frame.grid_columnconfigure(0, weight=1)
+        self.edit_frame.grid_rowconfigure(0, weight=1)
+
+        self.song_edit_component = SongEditComponent(self.edit_frame, self)
+        self.song_edit_component.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+
+        # Show default view
+        self.rules_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
 
         # Navigation (Bottom buttons)
         self.navigation_component = NavigationComponent(self.right_frame, self)
-        self.navigation_component.grid(row=5, column=0, sticky="ew", padx=8, pady=(0, 8))
+        self.navigation_component.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 8))
 
         # Set default sash location after window appears
         self.after(150, lambda: self.paned.sash_place(0, int(self.winfo_screenwidth() * 0.62), 0))
         # Initialize rule tab button states
         self.rule_tabs_component.update_rule_tab_buttons()
+
+    def switch_right_view(self, value: str) -> None:
+        """Switch between Rules and Song Edit views."""
+        if value == "Rules + Presets":
+            self.edit_frame.grid_forget()
+            self.rules_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        else:
+            self.rules_frame.grid_forget()
+            self.edit_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
 
     # -------------------------
     # FIXED: Tree population with correct column order
@@ -328,22 +363,6 @@ class DFApp(ctk.CTk):
         ).start()
 
     # Cover Image Functions
-    def _safe_cover_display_update(self, text: str, *, clear_image: bool = False) -> None:
-        """Safely update cover display without causing Tcl errors."""
-        try:
-            if clear_image:
-                # Clear image reference first using a safer approach
-                self.json_edit_component.cover_display.configure(image=None)
-            self.json_edit_component.cover_display.configure(text=text)
-        except Exception:
-            # If we get an error, try a more aggressive approach
-            try:
-                self.json_edit_component.cover_display.configure(image=None, text=text)
-            except Exception:
-                # Final fallback - just set text
-                with contextlib.suppress(Exception):
-                    self.json_edit_component.cover_display.configure(text=text)
-
     def load_current_cover(self) -> None:
         """Load cover image for current song."""
         if self.current_index is None or not self.song_files:
@@ -364,7 +383,7 @@ class DFApp(ctk.CTk):
             return
 
         # Show loading message
-        self._safe_cover_display_update("Loading cover...")
+        self.song_edit_component.show_loading_cover()
 
         # Load art when free
         threading.Thread(target=self.load_cover_art, args=(path,), daemon=True).start()
@@ -377,23 +396,23 @@ class DFApp(ctk.CTk):
                 ctk_image = self.cover_cache.put(path, img)
                 self.display_cover_image(ctk_image)
             else:
-                self._safe_cover_display_update("No cover", clear_image=True)
+                self.song_edit_component.show_no_cover()
 
         except Exception:
             logger.exception("Error loading cover")
-            self._safe_cover_display_update("No cover (error)", clear_image=True)
+            self.song_edit_component.show_cover_error()
 
     def display_cover_image(self, ctk_image: ctk.CTkImage | None) -> None:
         """Display cover image centered in the square container."""
         if not ctk_image:
-            self._safe_cover_display_update("No cover", clear_image=True)
+            self.song_edit_component.show_no_cover()
             return
 
         try:
-            self.json_edit_component.cover_display.configure(image=ctk_image, text="")
+            self.song_edit_component.display_cover(ctk_image)
         except Exception:
             logger.exception("Error displaying cover")
-            self._safe_cover_display_update("Error loading cover", clear_image=True)
+            self.song_edit_component.show_cover_error("Error loading cover")
 
     def toggle_theme(self, theme: str | None = None) -> None:
         """Toggle between dark and light themes."""
@@ -414,6 +433,7 @@ class DFApp(ctk.CTk):
             # Update all theme-dependent elements
             self.menu_component.update_theme()
             self.tree_component.update_theme()
+            self.song_edit_component.update_theme()
             self.json_edit_component.update_theme()
             self.output_preview_component.update_theme()
 
@@ -422,11 +442,11 @@ class DFApp(ctk.CTk):
                 self.after(0, self.refresh_tree)
 
             # Always load cover after theme change
-            self._safe_cover_display_update("Loading cover...")
+            self.song_edit_component.show_loading_cover()
             if self.current_index is not None:
                 self.load_current_cover()
             else:
-                self._safe_cover_display_update("No cover", clear_image=True)
+                self.song_edit_component.show_no_cover()
 
         except Exception:
             logger.exception("Error toggling theme")
@@ -864,6 +884,9 @@ class DFApp(ctk.CTk):
 
         # Load cover AFTER preview is updated
         self.load_current_cover()
+
+        # Update Song Edit View
+        self.song_edit_component.update_view(self.current_metadata)
 
     def prev_file(self) -> None:
         """Navigate to previous file in the visible list."""

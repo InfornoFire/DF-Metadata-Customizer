@@ -27,13 +27,12 @@ class JSONEditComponent(AppComponent):
 
     @override
     def setup_ui(self) -> None:
-        self.grid_columnconfigure(0, weight=2)
-        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
         # JSON viewer
         json_frame = ctk.CTkFrame(self)
-        json_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        json_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
         json_frame.grid_rowconfigure(1, weight=1)
         json_frame.grid_columnconfigure(0, weight=1)
         json_frame.grid_columnconfigure(1, weight=0)
@@ -60,14 +59,6 @@ class JSONEditComponent(AppComponent):
         self.json_scroll = ttk.Scrollbar(json_frame, orient="vertical", command=self.json_text.yview)
         self.json_text.configure(yscrollcommand=self.json_scroll.set)
         self.json_scroll.grid(row=1, column=1, sticky="ns", pady=(0, 6))
-
-        # Cover preview
-        cover_frame = ctk.CTkFrame(self)
-        cover_frame.grid(row=0, column=1, sticky="nsew")
-        cover_frame.grid_rowconfigure(0, weight=1)
-
-        self.cover_display = ctk.CTkLabel(cover_frame, text="Loading cover...", corner_radius=8, justify="center")
-        self.cover_display.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
 
     @override
     def update_theme(self) -> None:

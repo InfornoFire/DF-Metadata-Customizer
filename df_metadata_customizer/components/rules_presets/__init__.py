@@ -1,4 +1,4 @@
-"""A collection of components for the Database Reformatter App."""
+"""Rules & Presets components."""
 
 from .filename import FilenameComponent
 from .output_preview import OutputPreviewComponent

@@ -8,7 +8,6 @@ from typing import override
 import customtkinter as ctk
 
 from df_metadata_customizer.components.app_component import AppComponent
-from df_metadata_customizer.settings_manager import SettingsManager
 
 logger = logging.getLogger(__name__)
 
