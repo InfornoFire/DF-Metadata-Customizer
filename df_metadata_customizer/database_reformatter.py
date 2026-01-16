@@ -78,9 +78,15 @@ class DFApp(ctk.CTk):
         """Initialize the main application window."""
         super().__init__()
         self.title("Database Reformatter — Metadata Customizer")
-        width, height = 1920, 1080
+
+        # Window size
+        if self.winfo_screenheight() >= 1440:  # 1440p+ -> 1080p
+            width, height = 1920, 1080
+        else:
+            width, height = 1280, 720
+
         self.geometry(f"{width}x{height}")
-        self.minsize(1280, 720)
+        self.minsize(960, 540)
 
         # Center the window
         self.update_idletasks()
