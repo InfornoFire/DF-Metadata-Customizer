@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.dialogs.duplication_check import DuplicationCheckDialog
+from df_metadata_customizer.dialogs.export import ExportDialog
 from df_metadata_customizer.settings_manager import SettingsManager
 
 
@@ -69,6 +70,11 @@ class AppMenuComponent(AppComponent):
         """Create the file menu structure."""
         self.file_menu = tk.Menu(self.app, tearoff=0)
         self.file_menu.add_command(label="Open Folder", command=self.app.select_folder)
+
+        self.export_menu = tk.Menu(self.file_menu, tearoff=0)
+        self.export_menu.add_command(label="JSON", command=self._show_export_dialog)
+        self.file_menu.add_cascade(label="Export", menu=self.export_menu)
+
         self.file_menu.add_command(
             label="Save Settings",
             command=lambda: [self.app.save_settings(), messagebox.showinfo("Settings", "Settings saved successfully.")],
@@ -105,6 +111,13 @@ class AppMenuComponent(AppComponent):
                 activebackground=active_bg,
                 activeforeground=active_fg,
             )
+            self.export_menu.configure(
+                background=bg_color,
+                foreground=fg_color,
+                activebackground=active_bg,
+                activeforeground=active_fg,
+            )
+
             self.tools_menu.configure(
                 background=bg_color,
                 foreground=fg_color,
@@ -145,3 +158,11 @@ class AppMenuComponent(AppComponent):
             return
 
         DuplicationCheckDialog(self.app)
+
+    def _show_export_dialog(self) -> None:
+        """Show export dialog."""
+        if not self.app.song_files:
+            messagebox.showwarning("No Songs", "Please load a folder with songs first.")
+            return
+
+        ExportDialog(self.app)
