@@ -7,6 +7,7 @@ import os
 import platform
 import subprocess
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import override
 
@@ -228,7 +229,7 @@ class TreeComponent(AppComponent):
             elif platform.system() == "Darwin":  # macOS
                 subprocess.Popen(["open", "-R", path])
             else:  # Linux and others
-                subprocess.Popen(["xdg-open", os.path.dirname(path)])
+                subprocess.Popen(["xdg-open", Path(path).parent])
         except Exception as e:
             messagebox.showerror("Error", f"Could not open file location:\n{e}")
 
@@ -367,7 +368,7 @@ class TreeComponent(AppComponent):
                 # Reapply preserved width/stretch to avoid reset after reorder
                 self.tree.column(col, width=width, anchor=anchor, stretch=stretch)
             except Exception:
-                pass
+                logger.exception("Error configuring tree column")
 
         # Remap existing item values from prev_columns -> new_columns
         try:
@@ -387,7 +388,7 @@ class TreeComponent(AppComponent):
                 new_vals = [vals_map.get(name, "") for name in new_columns]
                 self.tree.item(iid, values=tuple(new_vals))
         except Exception:
-            pass
+            logger.exception("Error remapping tree item values")
 
         # Restore selection and scroll position
         if selection:
@@ -397,7 +398,7 @@ class TreeComponent(AppComponent):
             self.tree.yview_moveto(scroll_v[0])
             self.tree.xview_moveto(scroll_h[0])
         except Exception:
-            pass
+            logger.exception("Error restoring scroll position")
 
     def get_row_values(self, row: dict) -> tuple:
         """Extract and format values for treeview columns from a data row."""

@@ -1,5 +1,6 @@
 """App Menu component."""
 
+import logging
 import tkinter as tk
 from tkinter import messagebox
 from typing import override
@@ -11,6 +12,8 @@ from df_metadata_customizer.dialogs.duplication_check import DuplicationCheckDia
 from df_metadata_customizer.dialogs.export import ExportDialog
 from df_metadata_customizer.dialogs.preferences import PreferencesDialog
 from df_metadata_customizer.settings_manager import SettingsManager
+
+logger = logging.getLogger(__name__)
 
 
 class AppMenuComponent(AppComponent):
@@ -134,7 +137,7 @@ class AppMenuComponent(AppComponent):
                 activeforeground=active_fg,
             )
         except Exception:
-            pass
+            logger.exception("Error updating AppMenuComponent theme")
 
     def _show_file_menu(self) -> None:
         """Show the file menu dropdown."""

@@ -115,7 +115,7 @@ class RuleTabsComponent(AppComponent):
             row.template_entry.insert(0, f"Archive VOL {{{MetadataFields.DISC}}}")
 
         # FIXED: Use force preview update for immediate response
-        def update_callback(*args) -> None:
+        def update_callback(*_args: tuple) -> None:
             self.app.output_preview_component.update_preview()
 
         row.field_var.trace("w", update_callback)

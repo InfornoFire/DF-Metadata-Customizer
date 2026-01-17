@@ -122,7 +122,7 @@ class MetadataEditorComponent(ScrollableAppComponent):
         entry.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
 
         # Bind change event to checking against original
-        entry.bind("<KeyRelease>", lambda e, k=key: self._on_text_change(k))
+        entry.bind("<KeyRelease>", lambda _e, k=key: self._on_text_change(k))
 
         self.entries[key] = entry
 

@@ -177,7 +177,7 @@ class CoverDisplayComponent(AppComponent):
 
         self.tooltip_label = ctk.CTkToplevel(self)
         self.tooltip_label.wm_overrideredirect(boolean=True)
-        self.tooltip_label.attributes("-topmost", True)
+        self.tooltip_label.attributes("-topmost", True)  # noqa: FBT003
         self.tooltip_label.configure(fg_color=("gray85", "gray20"))
 
         # Position near help icon

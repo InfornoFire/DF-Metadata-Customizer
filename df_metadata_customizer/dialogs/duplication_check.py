@@ -57,7 +57,9 @@ class DuplicationCheckDialog(ctk.CTkToplevel):
 
         self.info_label = ctk.CTkLabel(
             self.main_frame,
-            text=f"This tool checks for purely exact audio content duplication.\nIt calculates a hash of the audio data, ignoring metadata tags.\n\nfiles to check: {len(self.app.song_files)}",
+            text="This tool checks for purely exact audio content duplication.\n"
+            "It calculates a hash of the audio data, ignoring metadata tags.\n\n"
+            f"Files to check: {len(self.app.song_files)}",
             justify="center",
             wraplength=400,
         )
@@ -142,12 +144,11 @@ class DuplicationCheckDialog(ctk.CTkToplevel):
             for p in paths:
                 display_path = p
                 if root_folder:
-                    try:
-                        # try absolute resolution first just in case p is not abs
+                    try:  # Try absolute resolution first just in case p is not abs
                         abs_p = Path(p).resolve()
                         abs_root = root_folder.resolve()
                         display_path = os.path.relpath(abs_p, abs_root)
-                    except Exception:
+                    except Exception:  # noqa: S110
                         pass  # Keep original path if error
 
                 text_area.insert("end", f"  - {display_path}\n")

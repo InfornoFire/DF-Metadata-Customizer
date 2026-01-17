@@ -144,6 +144,7 @@ class SettingsManager:
                 try:
                     vals.append(preset_file.stem)
                 except Exception:
+                    logger.exception("Error reading preset file name")
                     continue
             vals.sort()
         except Exception:
