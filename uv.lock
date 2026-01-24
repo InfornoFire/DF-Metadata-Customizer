@@ -42,6 +42,7 @@ dependencies = [
     { name = "mutagen" },
     { name = "pillow" },
     { name = "polars" },
+    { name = "rclone-python" },
     { name = "rich" },
     { name = "tinytag" },
 ]
@@ -58,6 +59,7 @@ requires-dist = [
     { name = "mutagen", specifier = "==1.47.0" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "polars", specifier = "==1.36.1" },
+    { name = "rclone-python", specifier = "==0.1.23" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "tinytag", specifier = "==2.2.0" },
 ]
@@ -309,6 +311,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/85/9f/01a1a99704853cb63f253eea009390c88e7131c67e66a0a02099a8c917cb/pywin32-ctypes-0.2.3.tar.gz", hash = "sha256:d162dc04946d704503b2edc4d55f3dba5c1d539ead017afa00142c38b9885755", size = 29471, upload-time = "2024-08-14T10:15:34.626Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/3d/8161f7711c017e01ac9f008dfddd9410dff3674334c233bde66e7ba65bbf/pywin32_ctypes-0.2.3-py3-none-any.whl", hash = "sha256:8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8", size = 30756, upload-time = "2024-08-14T10:15:33.187Z" },
+]
+
+[[package]]
+name = "rclone-python"
+version = "0.1.23"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f4/97/b939d197402e9e07e8f6279639010816c3ae68f811a0ac4c6fdfadf9d3d1/rclone_python-0.1.23.tar.gz", hash = "sha256:ee66792614693a615b877dac04ce4a2b135411cc19e32b4ba7a6079d868b987b", size = 22040, upload-time = "2025-07-12T14:12:54.47Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/29/4e3ca152bf6e3415d06a0b34cd5091a8954062a724d879f2875d92924b74/rclone_python-0.1.23-py3-none-any.whl", hash = "sha256:a38902fef0dad5c54c3895efad390e75d65f3b71c895d947d08c191210a8ccf8", size = 15493, upload-time = "2025-07-12T14:12:53.399Z" },
 ]
 
 [[package]]
