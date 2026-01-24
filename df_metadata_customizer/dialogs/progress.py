@@ -5,20 +5,25 @@ import customtkinter as ctk
 from df_metadata_customizer.dialogs.app_dialog import AppDialog
 
 
+# Exception for cancelled
+class ProgressCancelledException(BaseException):
+    """Exception raised when progress is cancelled."""
+
+
 class ProgressDialog(AppDialog):
     """Display the progress of a generic operation."""
 
-    def __init__(self, parent: ctk.CTk, title: str = "Processing...") -> None:
+    def __init__(self, parent: ctk.CTk, title: str = "Processing...", geometry: str = "400x120") -> None:
         """Display the progress of a generic operation."""
-        super().__init__(parent, title, geometry="400x120")
+        super().__init__(parent, title, geometry=geometry)
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
 
-        self.label = ctk.CTkLabel(self, text="Starting...")
-        self.label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
+        self.label = ctk.CTkLabel(self, text="Starting...", justify="left", anchor="w")
+        self.label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         self.progress = ctk.CTkProgressBar(self)
         self.progress.grid(row=1, column=0, padx=20, pady=10, sticky="ew")

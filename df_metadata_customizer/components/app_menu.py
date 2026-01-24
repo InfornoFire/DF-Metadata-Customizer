@@ -10,6 +10,7 @@ import customtkinter as ctk
 from df_metadata_customizer.components.app_component import AppComponent
 from df_metadata_customizer.dialogs.duplication_check import DuplicationCheckDialog
 from df_metadata_customizer.dialogs.export import ExportDialog
+from df_metadata_customizer.dialogs.gdrive_download import GDriveDownloadDialog
 from df_metadata_customizer.dialogs.preferences import PreferencesDialog
 from df_metadata_customizer.settings_manager import SettingsManager
 
@@ -92,6 +93,8 @@ class AppMenuComponent(AppComponent):
         """Create the tools menu structure."""
         self.tools_menu = tk.Menu(self.app, tearoff=0)
 
+        self.tools_menu.add_command(label="GDrive Download", command=self._show_gdrive_download)
+
         # Duplication Check submenu
         self.dupe_menu = tk.Menu(self.tools_menu, tearoff=0)
         self.dupe_menu.add_command(label="Exact", command=self._show_duplication_check)
@@ -156,6 +159,10 @@ class AppMenuComponent(AppComponent):
             self.tools_menu.tk_popup(x, y, 0)
         finally:
             self.tools_menu.grab_release()
+
+    def _show_gdrive_download(self) -> None:
+        """Show GDrive download dialog."""
+        GDriveDownloadDialog(self.app)
 
     def _show_duplication_check(self) -> None:
         """Show duplication check dialog."""

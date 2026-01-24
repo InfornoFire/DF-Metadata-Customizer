@@ -50,8 +50,9 @@ logging_handler = RichHandler(
     markup=False,
     rich_tracebacks=True,
 )
-logging.basicConfig(level=logging.DEBUG, format="%(message)s", handlers=[logging_handler])
+logging.basicConfig(level=logging.DEBUG, format="%(message)s", handlers=[logging_handler], force=True)
 logging.getLogger("PIL").setLevel(logging.INFO)  # Suppress PIL debug logs
+logging.getLogger("rclone_python.logs").setLevel(logging.INFO)  # Suppress rclone debug logs
 
 logger = logging.getLogger(__name__)
 
